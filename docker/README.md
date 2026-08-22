@@ -68,13 +68,22 @@ docker login ghcr.io -u Tricade
 
 ## Unraid
 
-Copy `docker/my-factorio-server-manager.xml` to:
+The canonical Community Applications template is `templates/factorio-server-manager.xml`. Once approved, install it by searching for **Factorio Server Manager** in Unraid's Apps tab. For a manual installation before approval, download the [raw template](https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/templates/factorio-server-manager.xml) to:
 
 ```text
 /boot/config/plugins/dockerMan/templates-user/my-factorio-server-manager.xml
 ```
 
-In Unraid, choose **Docker → Add Container → User templates → factorio-server-manager**. The template maps manager data, saves, mods and config separately and deliberately omits an overlapping `/opt/factorio` mount.
+In Unraid, choose **Docker → Add Container → User templates → Factorio-Server-Manager**. The default host paths share one parent and use clear subdirectories:
+
+```text
+/mnt/user/appdata/factorio-server-manager/data
+/mnt/user/appdata/factorio-server-manager/saves
+/mnt/user/appdata/factorio-server-manager/mods
+/mnt/user/appdata/factorio-server-manager/config
+```
+
+The corresponding container paths stay separate, and the template deliberately omits an overlapping `/opt/factorio` mount.
 
 Game-server autostart is configured inside **Server settings**. To run multiple Factorio servers concurrently, duplicate the container and give every copy a unique container name, Web UI host port, Factorio UDP host port, RCON password and separate storage paths. Profiles inside one manager are mutually exclusive and do not run in parallel.
 
