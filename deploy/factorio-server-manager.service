@@ -1,0 +1,18 @@
+[Unit]
+Description=Factorio Server Manager and Factorio game server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=factorio
+Group=factorio
+WorkingDirectory=/home/factorio/manager
+Environment=HOME=/home/factorio
+ExecStart=/home/factorio/manager/factorio-server-manager --conf /home/factorio/manager-data/conf.json --dir /home/factorio/server --host 0.0.0.0 --port 8085 --game-bind-address 0.0.0.0 --autostart true --max-upload 512 --mod-pack-dir /home/factorio/manager-data/mod_packs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+
+[Install]
+WantedBy=multi-user.target

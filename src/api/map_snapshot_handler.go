@@ -1,0 +1,98 @@
+package api
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+
+	"github.com/OpenFactorioServerManager/factorio-server-manager/factorio"
+	"github.com/gorilla/mux"
+)
+
+const maxMapSnapshotSettingsRequestSize = 4 * 1024
+
+var getMapSnapshotState = factorio.GetMapSnapshotState
+var triggerMapSnapshot = factorio.TriggerMapSnapshot
+var setMapSnapshotSettings = factorio.SetMapSnapshotSettings
+var readMapSnapshotImage = factorio.ReadMapSnapshotImage
+
+func GetMapSnapshot(w http.ResponseWriter, _ *http.Request) {
+	state, err := getMapSnapshotState()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Unable to load map snapshot: %s", err), http.StatusInternalServerError)
+		return
+	}
+	writeMapSnapshotState(w, state, http.StatusOK)
+}
+
+func RefreshMapSnapshot(w http.ResponseWriter, _ *http.Request) {
+	state, err := triggerMapSnapshot()
+	if errors.Is(err, factorio.ErrMapSnapshotBusy) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Unable to start map snapshot: %s", err), http.StatusUnprocessableEntity)
+		return
+	}
+	writeMapSnapshotState(w, state, http.StatusAccepted)
+}
+
+func UpdateMapSnapshotSettings(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		IntervalMinutes *int `json:"interval_minutes"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxMapSnapshotSettingsRequestSize)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		http.Error(w, fmt.Sprintf("Unable to parse map snapshot settings: %s", err), http.StatusBadRequest)
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		http.Error(w, "Unable to parse map snapshot settings: request must contain one JSON object", http.StatusBadRequest)
+		return
+	}
+	if request.IntervalMinutes == nil {
+		http.Error(w, "Unable to parse map snapshot settings: interval_minutes is required", http.StatusBadRequest)
+		return
+	}
+	settings, err := setMapSnapshotSettings(factorio.MapSnapshotSettings{IntervalMinutes: *request.IntervalMinutes})
+	if errors.Is(err, factorio.ErrInvalidMapSnapshotSettings) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Unable to save map snapshot settings: %s", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+	w.Header().Set("Cache-Control", "no-store")
+	WriteResponse(w, settings)
+}
+
+func GetMapSnapshotImage(w http.ResponseWriter, r *http.Request) {
+	surfaceID := mux.Vars(r)["surface"]
+	contents, generatedAt, err := readMapSnapshotImage(surfaceID)
+	if errors.Is(err, factorio.ErrMapSnapshotNotFound) || errors.Is(err, factorio.ErrMapSnapshotSurfaceNotFound) {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Unable to load map snapshot image: %s", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	http.ServeContent(w, r, "surface-"+surfaceID+".png", generatedAt, bytes.NewReader(contents))
+}
+
+func writeMapSnapshotState(w http.ResponseWriter, state factorio.MapSnapshotState, status int) {
+	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	WriteResponse(w, state)
+}

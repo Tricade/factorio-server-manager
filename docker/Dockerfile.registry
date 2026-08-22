@@ -1,0 +1,88 @@
+# syntax=docker/dockerfile:1.7
+
+ARG VERSION="dev"
+ARG VCS_REF="unknown"
+
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS frontend-build
+
+ARG VERSION
+ARG VCS_REF
+ENV FSM_UI_VERSION=$VERSION \
+    FSM_UI_REVISION=$VCS_REF
+
+WORKDIR /workspace
+
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+COPY webpack.config.js tailwind.config.js ./
+COPY ui ./ui
+
+RUN npm run build
+
+
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS backend-build
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace/src
+
+COPY src/go.mod src/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+
+COPY src ./
+
+# The official Factorio headless binary is currently distributed for Linux amd64.
+RUN test "$TARGETOS/$TARGETARCH" = "linux/amd64" \
+    || (echo "Only linux/amd64 is supported because Factorio headless is amd64-only" >&2; exit 1)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w" -o /out/factorio-server-manager .
+
+
+# glibc is required by the official Factorio headless server.
+FROM ubuntu:24.04 AS runtime
+
+ARG VERSION
+ARG VCS_REF
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    FACTORIO_VERSION="" \
+    FSM_REQUIRE_PERSISTENT_MOUNTS=true \
+    RCON_PASS=""
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl jq tar xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/fsm
+
+COPY --from=backend-build /out/factorio-server-manager ./factorio-server-manager
+COPY --from=frontend-build /workspace/app/ ./app/
+COPY conf.json.example ./conf.json
+COPY docker/entrypoint.sh /opt/entrypoint.sh
+
+RUN sed -i 's/\r$//' /opt/entrypoint.sh \
+    && chmod 0755 /opt/fsm/factorio-server-manager /opt/entrypoint.sh
+
+# Keep volatile metadata after filesystem layers so a new build date does not
+# invalidate the package-install cache.
+ARG BUILD_DATE="unknown"
+ARG SOURCE_URL="https://github.com/Tricade/factorio-server-manager"
+LABEL org.opencontainers.image.title="Factorio Server Manager" \
+      org.opencontainers.image.description="Web UI for managing a persistent Factorio headless server" \
+      org.opencontainers.image.source=$SOURCE_URL \
+      org.opencontainers.image.created=$BUILD_DATE \
+      org.opencontainers.image.version=$VERSION \
+      org.opencontainers.image.revision=$VCS_REF \
+      org.opencontainers.image.licenses="MIT"
+
+EXPOSE 80/tcp 34197/udp
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=2m --retries=5 \
+    CMD curl --fail --silent --show-error http://127.0.0.1/ >/dev/null || exit 1
+
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/opt/entrypoint.sh"]

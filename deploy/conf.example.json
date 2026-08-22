@@ -1,0 +1,8 @@
+{
+  "rcon_pass": "",
+  "sq_lite_database_file": "/home/factorio/manager-data/sqlite.db",
+  "cookie_encryption_key": "",
+  "settings_file": "server-settings.json",
+  "log_file": "/home/factorio/manager-data/factorio-server-manager.log",
+  "secure": false
+}

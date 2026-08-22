@@ -1,0 +1,92 @@
+name: Test
+
+env:
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '*.*'
+  pull_request:
+    branches:
+      - '**'
+jobs:
+  test-npm:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+  test-go:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    name: test-go (${{ matrix.os }})
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+      - if: contains(matrix.os, 'ubuntu')
+        working-directory: src
+        run: go test ./... -short -count=1
+      - if: contains(matrix.os, 'windows')
+        working-directory: src
+        run: go test ./... -short -count=1
+  docker-build:
+    needs:  [test-npm, test-go]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test release replacement on mounted Factorio directory
+        run: |
+          docker run --rm \
+            --mount type=bind,source="$PWD/src",target=/workspace,readonly \
+            --mount type=tmpfs,destination=/opt/factorio \
+            --env FSM_TEST_MOUNTED_FACTORIO_DIR=/opt/factorio \
+            --workdir /workspace \
+            golang:1.25-bookworm \
+            go test ./factorio -run '^TestReplaceReleaseFilesAtMountedDestination$' -count=1 -v
+      - uses: docker/setup-buildx-action@v4
+      - name: Build production container
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.registry
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: factorio-server-manager:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Reject missing persistent mounts
+        shell: bash
+        run: |
+          set +e
+          output=$(docker run --rm factorio-server-manager:ci 2>&1)
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -F '/opt/fsm-data is not a persistent bind mount or named volume' <<<"$output"
+          test "$(docker image inspect factorio-server-manager:ci --format '{{json .Config.Volumes}}')" = "null"
+          ! grep -F 'Target="/opt/factorio"' docker/my-factorio-server-manager.xml
+      - name: Accept split Unraid game-data mounts
+        run: |
+          docker run --rm \
+            --mount type=tmpfs,destination=/opt/fsm-data \
+            --mount type=tmpfs,destination=/opt/factorio/saves \
+            --mount type=tmpfs,destination=/opt/factorio/mods \
+            --mount type=tmpfs,destination=/opt/factorio/config \
+            factorio-server-manager:ci true

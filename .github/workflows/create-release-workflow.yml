@@ -1,0 +1,73 @@
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
+
+jobs:
+  add-assets-to-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Verify SemVer release metadata
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          package_version=$(node -p "require('./package.json').version")
+          [[ "$RELEASE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$RELEASE_TAG" = "$package_version"
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+      - name: Install mingw-w64
+        run: sudo apt-get update && sudo apt-get install gcc-multilib g++-multilib gcc-mingw-w64 g++-mingw-w64
+      - name: Create release bundles
+        run: make gen_release
+      - name: Upload release bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "build/factorio-server-manager-windows.zip#factorio-server-manager-windows-${{ github.event.release.tag_name }}.zip" \
+            "build/factorio-server-manager-linux.zip#factorio-server-manager-linux-${{ github.event.release.tag_name }}.zip"
+  docker-push:
+    needs: ['add-assets-to-release']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Resolve lowercase GHCR image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.registry
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.event.release.tag_name }}
+          build-args: |
+            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
+            VERSION=${{ github.event.release.tag_name }}
+            VCS_REF=${{ github.sha }}
+

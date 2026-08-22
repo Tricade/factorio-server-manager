@@ -1,0 +1,14 @@
+services:
+  factorio-server-manager:
+    image: "${FSM_IMAGE:?Set FSM_IMAGE to the complete registry image reference}"
+    container_name: "factorio-server-manager"
+    restart: "unless-stopped"
+    environment:
+      FACTORIO_VERSION: "${FACTORIO_VERSION:?Set FACTORIO_VERSION to stable, latest or an exact version}"
+      RCON_PASS: "${RCON_PASS:?Set RCON_PASS in the environment or env file}"
+    ports:
+      - "${FSM_HTTP_PORT:-8080}:80/tcp"
+      - "${FACTORIO_PORT:-34197}:34197/udp"
+    volumes:
+      - "./fsm-data:/opt/fsm-data"
+      - "./factorio-data:/opt/factorio"
