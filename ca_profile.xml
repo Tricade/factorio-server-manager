@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CommunityApplications>
-  <Profile>Factorio Server Manager provides a maintained Unraid template for a self-hosted Factorio dedicated-server manager. It includes profile-scoped saves, mods, game settings, Factorio versions, Space Age mode, checkpoints, world creation, factory-map snapshots, users, logs and safe server controls. Support and source code are available through the GitHub project.</Profile>
+  <Profile>Factorio Server Manager is a maintained modern fork of OpenFactorioServerManager and provides an Unraid template for a self-hosted Factorio dedicated-server manager. It includes profile-scoped saves, mods, game settings, Factorio versions, Space Age mode, checkpoints, world creation, factory-map snapshots, users, logs and safe server controls. Support and source code are available through the GitHub project.</Profile>
   <Icon>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/icon.svg</Icon>
   <WebPage>https://github.com/Tricade/factorio-server-manager</WebPage>
   <DonateLink>https://ko-fi.com/tricade</DonateLink>

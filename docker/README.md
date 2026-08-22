@@ -74,7 +74,7 @@ The canonical Community Applications template is `templates/factorio-server-mana
 /boot/config/plugins/dockerMan/templates-user/my-factorio-server-manager.xml
 ```
 
-In Unraid, choose **Docker → Add Container → User templates → Factorio-Server-Manager**. The default host paths share one parent and use clear subdirectories:
+In Unraid, choose **Docker → Add Container → User templates → FactorioServerManager-Tricade**. The distinct template name avoids confusion with the legacy upstream container already present in Community Applications. The default host paths share one parent and use clear subdirectories:
 
 ```text
 /mnt/user/appdata/factorio-server-manager/data
