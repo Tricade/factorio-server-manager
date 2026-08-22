@@ -3,6 +3,7 @@ dev/
 dev_packs/
 factorio-server-manager*
 factorio_server_manager*
+!templates/factorio-server-manager.xml
 auth.leveldb*
 conf.json
 *.exe
