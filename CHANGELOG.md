@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - Organized every default Unraid host path below `/mnt/user/appdata/factorio-server-manager/` with dedicated `data`, `saves`, `mods` and `config` subdirectories while preserving non-overlapping container mounts.
+- Distinguished the Community Applications entry from the existing legacy upstream listing with the `FactorioServerManager-Tricade` template name and explicit modern-fork attribution.
 
 ## [0.15.1] - 2026-08-22
 

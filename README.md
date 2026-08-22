@@ -173,7 +173,7 @@ For a manual installation before approval, download the [raw template](https://r
 /boot/config/plugins/dockerMan/templates-user/my-factorio-server-manager.xml
 ```
 
-Then select `Factorio-Server-Manager` under **Docker → Add Container → User templates**. Every default host path lives below one appdata root:
+Then select `FactorioServerManager-Tricade` under **Docker → Add Container → User templates**. The distinct template name avoids confusion with the legacy upstream container already present in Community Applications. Every default host path lives below one appdata root:
 
 ```text
 /mnt/user/appdata/factorio-server-manager/

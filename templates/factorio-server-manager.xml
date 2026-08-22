@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Container version="2">
-  <Name>Factorio-Server-Manager</Name>
+  <Name>FactorioServerManager-Tricade</Name>
   <Repository>ghcr.io/tricade/factorio-server-manager:latest</Repository>
   <Registry>https://github.com/Tricade/factorio-server-manager/pkgs/container/factorio-server-manager</Registry>
   <Network>bridge</Network>
@@ -9,9 +9,9 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Tricade/factorio-server-manager/issues</Support>
   <Project>https://github.com/Tricade/factorio-server-manager</Project>
-  <Overview>Operate one Factorio dedicated server through a modern web interface with independent profiles, saves, fixed checkpoints, compatible mods and dependencies, stable/experimental/exact game versions, base Factorio or Space Age, world creation, factory-map snapshots, logs, users and safe server controls.</Overview>
+  <Overview>A maintained modern fork of OpenFactorioServerManager. Operate one Factorio dedicated server through a responsive web interface with independent profiles, saves, fixed checkpoints, compatible mods and dependencies, stable/experimental/exact game versions, base Factorio or Space Age, world creation, factory-map snapshots, logs, users and safe server controls.</Overview>
   <Category>GameServers: Network:Management</Category>
-  <ExtraSearchTerms>factorio dedicated server manager mods saves space age</ExtraSearchTerms>
+  <ExtraSearchTerms>factorio dedicated server manager mods saves space age ofsm tricade</ExtraSearchTerms>
   <WebUI>http://[IP]:[PORT:80]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/templates/factorio-server-manager.xml</TemplateURL>
   <ReadMe>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/README.md</ReadMe>

@@ -51,6 +51,8 @@ def main() -> int:
     all_text = " ".join(template.itertext()).lower()
     assert "your_github" not in all_text and "example-app" not in all_text, "template contains starter placeholders"
     assert required_text(template, "Repository") == "ghcr.io/tricade/factorio-server-manager:latest"
+    assert required_text(template, "Name") == "FactorioServerManager-Tricade"
+    assert "modern fork" in required_text(template, "Overview").lower()
     assert required_text(template, "TemplateURL").endswith("/templates/factorio-server-manager.xml")
 
     configs = template.findall("Config")
