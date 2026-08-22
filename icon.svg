@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Factorio Server Manager</title>
+  <desc id="desc">A copper server stack inside an industrial gear on a dark background.</desc>
+  <defs>
+    <linearGradient id="background" x1="24" y1="16" x2="232" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#18212b"/>
+      <stop offset="1" stop-color="#090d12"/>
+    </linearGradient>
+    <linearGradient id="copper" x1="65" y1="54" x2="191" y2="202" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffb14a"/>
+      <stop offset="0.55" stop-color="#ee8e27"/>
+      <stop offset="1" stop-color="#a94f16"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="52" fill="url(#background)"/>
+  <path fill="#2a3643" d="M117 27h22l5 20a83 83 0 0 1 17 7l18-11 16 16-11 18a83 83 0 0 1 7 17l20 5v22l-20 5a83 83 0 0 1-7 17l11 18-16 16-18-11a83 83 0 0 1-17 7l-5 20h-22l-5-20a83 83 0 0 1-17-7l-18 11-16-16 11-18a83 83 0 0 1-7-17l-20-5V99l20-5a83 83 0 0 1 7-17L61 59l16-16 18 11a83 83 0 0 1 17-7l5-20Z"/>
+  <circle cx="128" cy="128" r="72" fill="#10161d" stroke="url(#copper)" stroke-width="8"/>
+  <g fill="url(#copper)">
+    <path d="M78 84c0-8 7-14 15-14h70c8 0 15 6 15 14v22c0 8-7 14-15 14H93c-8 0-15-6-15-14V84Zm17 2v18h66V86H95Z"/>
+    <path d="M78 130c0-8 7-14 15-14h70c8 0 15 6 15 14v22c0 8-7 14-15 14H93c-8 0-15-6-15-14v-22Zm17 2v18h66v-18H95Z"/>
+    <path d="M78 176c0-8 7-14 15-14h70c8 0 15 6 15 14v6c0 8-7 14-15 14H93c-8 0-15-6-15-14v-6Zm17 2v2h66v-2H95Z"/>
+  </g>
+  <g fill="#fff3df">
+    <circle cx="151" cy="95" r="5"/>
+    <circle cx="151" cy="141" r="5"/>
+    <circle cx="151" cy="179" r="5"/>
+  </g>
+</svg>

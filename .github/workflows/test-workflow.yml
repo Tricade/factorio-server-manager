@@ -45,8 +45,14 @@ jobs:
       - if: contains(matrix.os, 'windows')
         working-directory: src
         run: go test ./... -short -count=1
+  test-unraid-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate Community Applications metadata
+        run: python3 scripts/validate-unraid-template.py
   docker-build:
-    needs:  [test-npm, test-go]
+    needs: [test-npm, test-go, test-unraid-template]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -81,7 +87,7 @@ jobs:
           test "$status" -ne 0
           grep -F '/opt/fsm-data is not a persistent bind mount or named volume' <<<"$output"
           test "$(docker image inspect factorio-server-manager:ci --format '{{json .Config.Volumes}}')" = "null"
-          ! grep -F 'Target="/opt/factorio"' docker/my-factorio-server-manager.xml
+          ! grep -F 'Target="/opt/factorio"' templates/factorio-server-manager.xml
       - name: Accept split Unraid game-data mounts
         run: |
           docker run --rm \
