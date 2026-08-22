@@ -1,6 +1,6 @@
 [![Test](https://github.com/Tricade/factorio-server-manager/actions/workflows/test-workflow.yml/badge.svg)](https://github.com/Tricade/factorio-server-manager/actions/workflows/test-workflow.yml)
 [![Latest release](https://img.shields.io/github/v/release/Tricade/factorio-server-manager)](https://github.com/Tricade/factorio-server-manager/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Support-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/tricade)
 
 # Factorio Server Manager
@@ -165,13 +165,25 @@ Docker's restart policy controls the manager container. The manager-wide **Autos
 
 ## Unraid
 
-The template is available at [docker/my-factorio-server-manager.xml](docker/my-factorio-server-manager.xml). Copy it to:
+The submission-ready Community Applications metadata lives in [ca_profile.xml](ca_profile.xml), and the canonical Docker template is [templates/factorio-server-manager.xml](templates/factorio-server-manager.xml). Once the listing is approved, search for **Factorio Server Manager** in the Unraid Apps tab.
+
+For a manual installation before approval, download the [raw template](https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/templates/factorio-server-manager.xml) to:
 
 ```text
 /boot/config/plugins/dockerMan/templates-user/my-factorio-server-manager.xml
 ```
 
-Then select `factorio-server-manager` under **Docker → Add Container → User templates**. The template intentionally maps manager data, saves, mods and config separately and does not add a second overlapping `/opt/factorio` path. More migration and deployment detail is available in [docker/README.md](docker/README.md).
+Then select `Factorio-Server-Manager` under **Docker → Add Container → User templates**. Every default host path lives below one appdata root:
+
+```text
+/mnt/user/appdata/factorio-server-manager/
+├── data/
+├── saves/
+├── mods/
+└── config/
+```
+
+The four container targets remain separate. The template does not add a second overlapping `/opt/factorio` path. More migration and deployment detail is available in [docker/README.md](docker/README.md).
 
 ## Build from source
 
@@ -223,4 +235,4 @@ If this fork saves you time, you can support continued work through [ko-fi.com/t
 
 ## License
 
-Licensed under the [MIT License](LICENSE.md).
+Licensed under the [MIT License](LICENSE).

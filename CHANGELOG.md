@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Added the repository profile, canonical Docker template, project icon and automated structural checks required for an Unraid Community Applications submission.
+
+### Changed
+- Organized every default Unraid host path below `/mnt/user/appdata/factorio-server-manager/` with dedicated `data`, `saves`, `mods` and `config` subdirectories while preserving non-overlapping container mounts.
+
 ## [0.15.1] - 2026-08-22
 
 ### Added
