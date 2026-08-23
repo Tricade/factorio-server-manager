@@ -1,6 +1,7 @@
 [![Test](https://github.com/Tricade/factorio-server-manager/actions/workflows/test-workflow.yml/badge.svg)](https://github.com/Tricade/factorio-server-manager/actions/workflows/test-workflow.yml)
 [![Latest release](https://img.shields.io/github/v/release/Tricade/factorio-server-manager)](https://github.com/Tricade/factorio-server-manager/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![AI transparency](https://img.shields.io/badge/AI-transparency_notice-6f42c1)](AI-DISCLOSURE.md)
 [![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Support-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/tricade)
 
 # Factorio Server Control
@@ -9,6 +10,9 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 
 > [!NOTE]
 > This repository is a modernized fork of the original **Factorio Server Manager** project, [OpenFactorioServerManager/factorio-server-manager](https://github.com/OpenFactorioServerManager/factorio-server-manager). The original project, its authors and its contributors remain the source of the manager this fork builds on. See [Origin and attribution](#origin-and-attribution).
+
+> [!IMPORTANT]
+> **AI transparency:** This fork is developed with generative-AI assistance for code, tests, documentation, interface work and selected visual assets. Every published change remains maintainer-directed, reviewed and tested. The manager itself contains no AI model and sends no runtime data to an AI provider. The exact scope and asset provenance are documented in [AI-DISCLOSURE.md](AI-DISCLOSURE.md).
 
 ## What this fork adds
 
@@ -45,8 +49,8 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 - Automatic, manual-only and fully disabled generation modes for resource-constrained hosts; disabling generation retains the last completed images.
 - Optional postponement of automatic renders while players are online; manual generation remains available in manual-only and automatic modes.
 - Direct wheel/button zoom, drag-to-pan, reset-to-fit and a separate fullscreen lightbox.
-- A lazy Canvas building-footprint layer and legend at detailed zoom levels, with graceful fallback for legacy snapshots.
-- Manual generation or a manager-wide scheduled refresh interval.
+- A sharp, categorized Canvas building-footprint layer and legend at detailed zoom levels; compact space-platform views use a bounded higher-resolution overlay while legacy snapshots retain a graceful fallback.
+- Resource-aware manager-wide scheduling with a configurable interval, optional empty-server guard and an always-available manual action whenever map generation is enabled.
 - No exporter mod is added to the playable profile, and the running game process, original save, active mod list and achievement state are not modified.
 
 ### Versions, modes and mods
@@ -75,9 +79,13 @@ The implementation details and deliberate boundaries are documented in [TECHNICA
 
 ![Factorio Server Control operational overview](screenshots/Screenshot_Controls.png)
 
-### Factory map viewer
+### Factory map and platform detail
 
 ![Factorio Server Control fullscreen factory-map viewer](screenshots/Screenshot_Map_Lightbox.png)
+
+### Resource-aware map generation
+
+![Factorio Server Control factory-map generation settings](screenshots/Screenshot_Map_Settings.png)
 
 ### Independent profiles
 
@@ -132,6 +140,8 @@ The manager serves HTTP inside the container. The direct registry example sets `
 
 Factorio Server Control has no built-in analytics or telemetry. Manager accounts, configuration, logs, saves and map snapshots remain in the documented persistent mounts and are not sent to the fork maintainer. Release discovery and installation contact Factorio's official HTTPS services; mod search, authentication and downloads contact the official Factorio Mod Portal only when those features are used. When connecting a Factorio account, its password is submitted to `auth.factorio.com` over HTTPS but is not retained; the returned username/user key is stored with restrictive permissions in `/opt/fsm-data/factorio.auth`. Optional Factory Radio and Ko-fi links open their respective third-party sites only when selected in the browser. Review those services' own privacy terms before using them.
 
+Development-time use of generative-AI tools is disclosed separately in [AI-DISCLOSURE.md](AI-DISCLOSURE.md). Those tools are not part of the deployed application and receive no manager runtime data.
+
 ## Required persistent storage
 
 The production entrypoint refuses to start when manager credentials or game data would disappear during a container replacement.
@@ -168,7 +178,7 @@ The world generator appears only while the active profile has no save. Once a sa
 
 ### Factory maps
 
-The manager renders chart pixels through the installed Factorio headless binary in a disposable workspace. Factorio 2.0.61 or newer is required. Completed images live below persistent `/opt/fsm-data/map-snapshots/<profile-id>` and are served only by authenticated routes. Manager-wide settings select automatic, manual-only or fully disabled generation, can postpone automatic work while players are online, and can exclude space platforms before export. The next completed snapshot replaces any older platform images and metadata.
+The manager renders chart pixels through the installed Factorio headless binary in a disposable workspace. Factorio 2.0.61 or newer is required. Completed images live below persistent `/opt/fsm-data/map-snapshots/<profile-id>` and are served only by authenticated routes. Manager-wide settings select automatic, manual-only or fully disabled generation, can postpone automatic work while players are online, and can exclude space platforms before export. Surface choices are grouped into planets, named space platforms and other/modded surfaces. Small platforms receive a higher-resolution categorized building-footprint overlay, while the underlying chart remains Factorio's one-pixel-per-tile map data. The next completed snapshot replaces any older platform images and metadata.
 
 ### Fixed checkpoints
 

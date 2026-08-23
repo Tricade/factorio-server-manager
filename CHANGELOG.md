@@ -5,10 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-23
+
 ### Added
 - Added a manager-wide map-snapshot option that excludes space platforms from the isolated export entirely, avoiding their chart, image and building-detail output when large saves contain many platforms.
 - Added explicit automatic, manual-only and fully disabled factory-map modes, retaining the last completed images when generation is disabled.
 - Added an optional automatic-scheduling guard that postpones a due map render while players are online without restricting manual generation.
+- Added a repository and package-level AI transparency notice covering AI-assisted development and selected visual assets while making clear that the deployed manager contains no AI model or AI-provider data flow.
 
 ### Changed
 - Grouped the factory-map surface selector into planets, space platforms and modded/other surfaces while retaining player-visible platform names and legacy-snapshot fallbacks.
