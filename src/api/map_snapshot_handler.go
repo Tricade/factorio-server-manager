@@ -16,6 +16,7 @@ const maxMapSnapshotSettingsRequestSize = 4 * 1024
 
 var getMapSnapshotState = factorio.GetMapSnapshotState
 var triggerMapSnapshot = factorio.TriggerMapSnapshot
+var loadMapSnapshotSettings = factorio.LoadMapSnapshotSettings
 var setMapSnapshotSettings = factorio.SetMapSnapshotSettings
 var readMapSnapshotImage = factorio.ReadMapSnapshotImage
 var readMapSnapshotEntities = factorio.ReadMapSnapshotEntities
@@ -35,6 +36,10 @@ func RefreshMapSnapshot(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
+	if errors.Is(err, factorio.ErrMapSnapshotsDisabled) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Unable to start map snapshot: %s", err), http.StatusUnprocessableEntity)
 		return
@@ -44,7 +49,10 @@ func RefreshMapSnapshot(w http.ResponseWriter, _ *http.Request) {
 
 func UpdateMapSnapshotSettings(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		IntervalMinutes *int `json:"interval_minutes"`
+		Enabled                    *bool `json:"enabled"`
+		IntervalMinutes            *int  `json:"interval_minutes"`
+		AutomaticOnlyWhenNoPlayers *bool `json:"automatic_only_when_no_players"`
+		IncludeSpacePlatforms      *bool `json:"include_space_platforms"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxMapSnapshotSettingsRequestSize)
 	decoder := json.NewDecoder(r.Body)
@@ -61,7 +69,31 @@ func UpdateMapSnapshotSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to parse map snapshot settings: interval_minutes is required", http.StatusBadRequest)
 		return
 	}
-	settings, err := setMapSnapshotSettings(factorio.MapSnapshotSettings{IntervalMinutes: *request.IntervalMinutes})
+	enabled := request.Enabled
+	automaticOnlyWhenNoPlayers := request.AutomaticOnlyWhenNoPlayers
+	includeSpacePlatforms := request.IncludeSpacePlatforms
+	if enabled == nil || automaticOnlyWhenNoPlayers == nil || includeSpacePlatforms == nil {
+		current, err := loadMapSnapshotSettings()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Unable to load map snapshot settings: %s", err), http.StatusInternalServerError)
+			return
+		}
+		if enabled == nil {
+			enabled = &current.Enabled
+		}
+		if automaticOnlyWhenNoPlayers == nil {
+			automaticOnlyWhenNoPlayers = &current.AutomaticOnlyWhenNoPlayers
+		}
+		if includeSpacePlatforms == nil {
+			includeSpacePlatforms = &current.IncludeSpacePlatforms
+		}
+	}
+	settings, err := setMapSnapshotSettings(factorio.MapSnapshotSettings{
+		Enabled:                    *enabled,
+		IntervalMinutes:            *request.IntervalMinutes,
+		AutomaticOnlyWhenNoPlayers: *automaticOnlyWhenNoPlayers,
+		IncludeSpacePlatforms:      *includeSpacePlatforms,
+	})
 	if errors.Is(err, factorio.ErrInvalidMapSnapshotSettings) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

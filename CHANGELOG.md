@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Added a manager-wide map-snapshot option that excludes space platforms from the isolated export entirely, avoiding their chart, image and building-detail output when large saves contain many platforms.
+- Added explicit automatic, manual-only and fully disabled factory-map modes, retaining the last completed images when generation is disabled.
+- Added an optional automatic-scheduling guard that postpones a due map render while players are online without restricting manual generation.
+
+### Changed
+- Grouped the factory-map surface selector into planets, space platforms and modded/other surfaces while retaining player-visible platform names and legacy-snapshot fallbacks.
+- Small space-platform maps now render their precise building-footprint Canvas at a bounded higher internal resolution and load it at fit-to-view zoom instead of enlarging a one-pixel-per-tile overlay.
+
 ### Fixed
 - Release automation now detects hidden drafts by release ID and can safely resume a fully verified staged release after an interrupted publication.
 

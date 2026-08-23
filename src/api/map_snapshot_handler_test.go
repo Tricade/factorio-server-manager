@@ -17,12 +17,13 @@ import (
 func TestMapSnapshotHandlers(t *testing.T) {
 	originalGet := getMapSnapshotState
 	originalTrigger := triggerMapSnapshot
+	originalLoad := loadMapSnapshotSettings
 	originalSet := setMapSnapshotSettings
 	originalRead := readMapSnapshotImage
 	originalReadEntities := readMapSnapshotEntities
 	generatedAt := time.Date(2026, 8, 22, 14, 0, 0, 0, time.UTC)
 	state := factorio.MapSnapshotState{
-		Settings: factorio.MapSnapshotSettings{IntervalMinutes: 60},
+		Settings: factorio.MapSnapshotSettings{Enabled: true, IntervalMinutes: 60, AutomaticOnlyWhenNoPlayers: false, IncludeSpacePlatforms: true},
 		Snapshot: &factorio.MapSnapshot{
 			SchemaVersion: 1, ProfileID: "0123456789abcdef", GeneratedAt: generatedAt,
 			Surfaces: []factorio.MapSnapshotSurface{{
@@ -36,6 +37,7 @@ func TestMapSnapshotHandlers(t *testing.T) {
 		state.Running = true
 		return state, nil
 	}
+	loadMapSnapshotSettings = func() (factorio.MapSnapshotSettings, error) { return state.Settings, nil }
 	setMapSnapshotSettings = func(settings factorio.MapSnapshotSettings) (factorio.MapSnapshotSettings, error) {
 		state.Settings = settings
 		return settings, nil
@@ -55,6 +57,7 @@ func TestMapSnapshotHandlers(t *testing.T) {
 	t.Cleanup(func() {
 		getMapSnapshotState = originalGet
 		triggerMapSnapshot = originalTrigger
+		loadMapSnapshotSettings = originalLoad
 		setMapSnapshotSettings = originalSet
 		readMapSnapshotImage = originalRead
 		readMapSnapshotEntities = originalReadEntities
@@ -65,6 +68,9 @@ func TestMapSnapshotHandlers(t *testing.T) {
 	require.Equal(t, http.StatusOK, getRecorder.Code)
 	assert.Equal(t, "no-store", getRecorder.Header().Get("Cache-Control"))
 	assert.Contains(t, getRecorder.Body.String(), `"interval_minutes":60`)
+	assert.Contains(t, getRecorder.Body.String(), `"enabled":true`)
+	assert.Contains(t, getRecorder.Body.String(), `"automatic_only_when_no_players":false`)
+	assert.Contains(t, getRecorder.Body.String(), `"include_space_platforms":true`)
 	assert.Contains(t, getRecorder.Body.String(), `"view_bounds_available":true`)
 	assert.Contains(t, getRecorder.Body.String(), `"pixels_per_tile":1`)
 
@@ -74,9 +80,14 @@ func TestMapSnapshotHandlers(t *testing.T) {
 	assert.Contains(t, refreshRecorder.Body.String(), `"running":true`)
 
 	settingsRecorder := httptest.NewRecorder()
-	UpdateMapSnapshotSettings(settingsRecorder, httptest.NewRequest(http.MethodPut, "/api/map-snapshot/settings", strings.NewReader(`{"interval_minutes":135}`)))
+	UpdateMapSnapshotSettings(settingsRecorder, httptest.NewRequest(http.MethodPut, "/api/map-snapshot/settings", strings.NewReader(`{"enabled":false,"interval_minutes":135,"automatic_only_when_no_players":true,"include_space_platforms":false}`)))
 	require.Equal(t, http.StatusOK, settingsRecorder.Code)
-	assert.JSONEq(t, `{"interval_minutes":135}`, settingsRecorder.Body.String())
+	assert.JSONEq(t, `{"enabled":false,"interval_minutes":135,"automatic_only_when_no_players":true,"include_space_platforms":false}`, settingsRecorder.Body.String())
+
+	legacySettingsRecorder := httptest.NewRecorder()
+	UpdateMapSnapshotSettings(legacySettingsRecorder, httptest.NewRequest(http.MethodPut, "/api/map-snapshot/settings", strings.NewReader(`{"interval_minutes":90}`)))
+	require.Equal(t, http.StatusOK, legacySettingsRecorder.Code)
+	assert.JSONEq(t, `{"enabled":false,"interval_minutes":90,"automatic_only_when_no_players":true,"include_space_platforms":false}`, legacySettingsRecorder.Body.String())
 
 	imageRecorder := httptest.NewRecorder()
 	imageRequest := mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/api/map-snapshot/surfaces/1", nil), map[string]string{"surface": "1"})
@@ -95,15 +106,20 @@ func TestMapSnapshotHandlers(t *testing.T) {
 
 func TestMapSnapshotHandlersValidateRequestsAndErrors(t *testing.T) {
 	originalTrigger := triggerMapSnapshot
+	originalLoad := loadMapSnapshotSettings
 	originalSet := setMapSnapshotSettings
 	originalRead := readMapSnapshotImage
 	originalReadEntities := readMapSnapshotEntities
 	t.Cleanup(func() {
 		triggerMapSnapshot = originalTrigger
+		loadMapSnapshotSettings = originalLoad
 		setMapSnapshotSettings = originalSet
 		readMapSnapshotImage = originalRead
 		readMapSnapshotEntities = originalReadEntities
 	})
+	loadMapSnapshotSettings = func() (factorio.MapSnapshotSettings, error) {
+		return factorio.MapSnapshotSettings{Enabled: true, IntervalMinutes: 60, AutomaticOnlyWhenNoPlayers: false, IncludeSpacePlatforms: true}, nil
+	}
 
 	invalidRecorder := httptest.NewRecorder()
 	UpdateMapSnapshotSettings(invalidRecorder, httptest.NewRequest(http.MethodPut, "/api/map-snapshot/settings", strings.NewReader(`{}`)))
@@ -122,6 +138,13 @@ func TestMapSnapshotHandlersValidateRequestsAndErrors(t *testing.T) {
 	busyRecorder := httptest.NewRecorder()
 	RefreshMapSnapshot(busyRecorder, httptest.NewRequest(http.MethodPost, "/api/map-snapshot/refresh", nil))
 	assert.Equal(t, http.StatusConflict, busyRecorder.Code)
+
+	triggerMapSnapshot = func() (factorio.MapSnapshotState, error) {
+		return factorio.MapSnapshotState{}, factorio.ErrMapSnapshotsDisabled
+	}
+	disabledRecorder := httptest.NewRecorder()
+	RefreshMapSnapshot(disabledRecorder, httptest.NewRequest(http.MethodPost, "/api/map-snapshot/refresh", nil))
+	assert.Equal(t, http.StatusConflict, disabledRecorder.Code)
 
 	readMapSnapshotImage = func(string) ([]byte, time.Time, error) {
 		return nil, time.Time{}, errors.New("disk error")

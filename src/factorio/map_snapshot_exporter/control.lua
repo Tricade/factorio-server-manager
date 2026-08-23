@@ -6,6 +6,7 @@ local chunk_size = 32
 local maximum_entity_count = 100000
 local maximum_entity_bytes = 24 * 1024 * 1024
 local maximum_entity_line_bytes = 12 * 1024
+local include_space_platforms = __FSM_INCLUDE_SPACE_PLATFORMS__
 
 local function ordered_surfaces()
     local surfaces = {}
@@ -177,58 +178,60 @@ local function export_map()
 
     if force then
         for _, surface in ipairs(ordered_surfaces()) do
-            local filename = export_root .. "/surface-" .. surface.index .. ".jsonl"
-            local lines = {}
-            local chunk_count = 0
-            local min_x = nil
-            local min_y = nil
-            local max_x = nil
-            local max_y = nil
+            local display_name, kind = surface_identity(surface)
+            if include_space_platforms or kind ~= "platform" then
+                local filename = export_root .. "/surface-" .. surface.index .. ".jsonl"
+                local lines = {}
+                local chunk_count = 0
+                local min_x = nil
+                local min_y = nil
+                local max_x = nil
+                local max_y = nil
 
-            for chunk in surface.get_chunks() do
-                local pixels = force.get_chunk_chart(surface, chunk)
-                if pixels then
-                    local encoded = helpers.encode_string(pixels)
-                    if encoded then
-                        chunk_count = chunk_count + 1
-                        min_x = min_x and math.min(min_x, chunk.x) or chunk.x
-                        min_y = min_y and math.min(min_y, chunk.y) or chunk.y
-                        max_x = max_x and math.max(max_x, chunk.x) or chunk.x
-                        max_y = max_y and math.max(max_y, chunk.y) or chunk.y
-                        lines[#lines + 1] = helpers.table_to_json({x = chunk.x, y = chunk.y, data = encoded})
-                        if #lines >= batch_size then
-                            flush_lines(filename, lines)
+                for chunk in surface.get_chunks() do
+                    local pixels = force.get_chunk_chart(surface, chunk)
+                    if pixels then
+                        local encoded = helpers.encode_string(pixels)
+                        if encoded then
+                            chunk_count = chunk_count + 1
+                            min_x = min_x and math.min(min_x, chunk.x) or chunk.x
+                            min_y = min_y and math.min(min_y, chunk.y) or chunk.y
+                            max_x = max_x and math.max(max_x, chunk.x) or chunk.x
+                            max_y = max_y and math.max(max_y, chunk.y) or chunk.y
+                            lines[#lines + 1] = helpers.table_to_json({x = chunk.x, y = chunk.y, data = encoded})
+                            if #lines >= batch_size then
+                                flush_lines(filename, lines)
+                            end
                         end
                     end
                 end
-            end
-            flush_lines(filename, lines)
+                flush_lines(filename, lines)
 
-            if chunk_count > 0 then
-                local display_name, kind = surface_identity(surface)
-                local entity_filename = export_root .. "/surface-" .. surface.index .. "-entities.jsonl"
-                local entity_count, entity_total_count, entity_truncated, content_min_x, content_min_y, content_max_x, content_max_y = export_entity_details(surface, force, building_names, entity_filename)
-                local view_min_x, view_min_y, view_max_x, view_max_y = fitted_tile_bounds(surface, min_x, min_y, max_x, max_y, content_min_x, content_min_y, content_max_x, content_max_y)
-                manifest.surfaces[#manifest.surfaces + 1] = {
-                    index = surface.index,
-                    name = display_name,
-                    surface_name = surface.name,
-                    kind = kind,
-                    chunk_count = chunk_count,
-                    min_x = min_x,
-                    min_y = min_y,
-                    max_x = max_x,
-                    max_y = max_y,
-                    view_min_tile_x = view_min_x,
-                    view_min_tile_y = view_min_y,
-                    view_max_tile_x = view_max_x,
-                    view_max_tile_y = view_max_y,
-                    file = "surface-" .. surface.index .. ".jsonl",
-                    entity_file = "surface-" .. surface.index .. "-entities.jsonl",
-                    entity_count = entity_count,
-                    entity_total_count = entity_total_count,
-                    entity_truncated = entity_truncated
-                }
+                if chunk_count > 0 then
+                    local entity_filename = export_root .. "/surface-" .. surface.index .. "-entities.jsonl"
+                    local entity_count, entity_total_count, entity_truncated, content_min_x, content_min_y, content_max_x, content_max_y = export_entity_details(surface, force, building_names, entity_filename)
+                    local view_min_x, view_min_y, view_max_x, view_max_y = fitted_tile_bounds(surface, min_x, min_y, max_x, max_y, content_min_x, content_min_y, content_max_x, content_max_y)
+                    manifest.surfaces[#manifest.surfaces + 1] = {
+                        index = surface.index,
+                        name = display_name,
+                        surface_name = surface.name,
+                        kind = kind,
+                        chunk_count = chunk_count,
+                        min_x = min_x,
+                        min_y = min_y,
+                        max_x = max_x,
+                        max_y = max_y,
+                        view_min_tile_x = view_min_x,
+                        view_min_tile_y = view_min_y,
+                        view_max_tile_x = view_max_x,
+                        view_max_tile_y = view_max_y,
+                        file = "surface-" .. surface.index .. ".jsonl",
+                        entity_file = "surface-" .. surface.index .. "-entities.jsonl",
+                        entity_count = entity_count,
+                        entity_total_count = entity_total_count,
+                        entity_truncated = entity_truncated
+                    }
+                end
             end
         end
     end

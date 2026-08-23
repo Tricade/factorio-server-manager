@@ -16,6 +16,9 @@ import Button from "../components/Button";
 import MapImageViewer, {entityDetailZoom, MapImageLightbox} from "../components/MapImageViewer";
 import PlayerOverviewPanel from "../components/PlayerOverviewPanel";
 import {useProfiles} from "../context/ProfileContext";
+import mapSurfaceHelpers from "./mapSurfaces.cjs";
+
+const {groupMapSurfaces, mapSurfaceKind, mapSurfaceLabel} = mapSurfaceHelpers;
 
 const targetLabel = target => target === "latest" ? "Experimental / latest" : target === "stable" ? "Stable" : target || "Pinned";
 
@@ -102,22 +105,28 @@ const Controls = ({serverStatus, canManage = false}) => {
         return () => window.clearInterval(poll);
     }, [loadMapSnapshot, mapState?.running]);
 
+    const mapSnapshot = mapState?.snapshot || null;
+    const rawMapSurfaces = mapSnapshot?.surfaces || [];
+    const mapSnapshotsEnabled = mapState?.settings?.enabled !== false;
+    const includeSpacePlatforms = mapState?.settings?.include_space_platforms !== false;
+    const mapSurfaces = useMemo(() => rawMapSurfaces.filter(surface => includeSpacePlatforms || mapSurfaceKind(surface) !== "platform"), [includeSpacePlatforms, rawMapSurfaces]);
+    const mapSurfaceGroups = useMemo(() => groupMapSurfaces(mapSurfaces), [mapSurfaces]);
+
     useEffect(() => {
-        const surfaces = mapState?.snapshot?.surfaces || [];
-        if (!surfaces.some(surface => surface.id === selectedSurface)) {
-            setSelectedSurface(surfaces[0]?.id || "");
+        if (!mapSurfaces.some(surface => surface.id === selectedSurface)) {
+            setSelectedSurface(mapSurfaces[0]?.id || "");
         }
-    }, [mapState?.snapshot?.generated_at, selectedSurface]);
+    }, [mapSurfaces, selectedSurface]);
 
     useEffect(() => {
         setMapView({zoom: 1, x: 0, y: 0});
         setIsMapLightboxOpen(false);
     }, [mapState?.snapshot?.generated_at, selectedSurface]);
 
-    const mapSnapshot = mapState?.snapshot || null;
-    const mapSurfaces = mapSnapshot?.surfaces || [];
     const activeSurface = mapSurfaces.find(surface => surface.id === selectedSurface) || mapSurfaces[0] || null;
-    const shouldLoadMapEntities = mapView.zoom >= entityDetailZoom;
+    const activeSurfaceKind = activeSurface ? mapSurfaceKind(activeSurface) : "surface";
+    const activeSurfaceDetailZoom = activeSurfaceKind === "platform" ? 1 : entityDetailZoom;
+    const shouldLoadMapEntities = mapView.zoom >= activeSurfaceDetailZoom;
 
     useEffect(() => {
         setMapEntities(null);
@@ -166,7 +175,8 @@ const Controls = ({serverStatus, canManage = false}) => {
     const mapImageURL = activeSurface && mapSnapshot
         ? `/api/map-snapshot/surfaces/${encodeURIComponent(activeSurface.id)}?v=${encodeURIComponent(mapSnapshot.generated_at)}`
         : "";
-    const mapImageAlt = activeSurface && mapSnapshot ? `${activeSurface.name} map from ${mapSnapshot.save_name}` : "Factory map";
+    const activeSurfaceLabel = activeSurface ? mapSurfaceLabel(activeSurface) : "";
+    const mapImageAlt = activeSurface && mapSnapshot ? `${activeSurfaceLabel} map from ${mapSnapshot.save_name}` : "Factory map";
     const mapEntityOverlay = activeSurface ? {
         entities: mapEntities,
         error: mapEntityError,
@@ -252,8 +262,8 @@ const Controls = ({serverStatus, canManage = false}) => {
             help="Generated from a temporary copy of the latest completed save. The exporter is never added to the active profile or written back to the save."
             headerAction={<div className="flex flex-wrap items-center gap-2">
                 <ScopeBadge/>
-                <span className={`ui-status-badge ${mapState?.running ? "ui-status-badge--warning" : mapSnapshot ? "ui-status-badge--running" : ""}`}>
-                    {mapState?.running ? "Generating" : mapSnapshot ? "Ready" : "No snapshot"}
+                <span className={`ui-status-badge ${!mapSnapshotsEnabled ? "ui-status-badge--stopped" : mapState?.running ? "ui-status-badge--warning" : mapSnapshot ? "ui-status-badge--running" : ""}`}>
+                    {!mapSnapshotsEnabled ? "Disabled" : mapState?.running ? "Generating" : mapSnapshot ? "Ready" : "No snapshot"}
                 </span>
             </div>}
             content={isLoadingMap
@@ -266,8 +276,10 @@ const Controls = ({serverStatus, canManage = false}) => {
                             <div className="ui-map-snapshot__toolbar">
                                 <div>
                                     <span>Surface</span>
-                                    <select className="ui-select" value={activeSurface.id} onChange={event => setSelectedSurface(event.target.value)}>
-                                        {mapSurfaces.map(surface => <option value={surface.id} key={surface.id}>{surface.name}</option>)}
+                                    <select className="ui-select" aria-label="Map surface" value={activeSurface.id} onChange={event => setSelectedSurface(event.target.value)}>
+                                        {mapSurfaceGroups.map(group => <optgroup label={group.label} key={group.kind}>
+                                            {group.surfaces.map(surface => <option value={surface.id} key={surface.id}>{mapSurfaceLabel(surface)}</option>)}
+                                        </optgroup>)}
                                     </select>
                                 </div>
                                 <div className="ui-map-snapshot__facts">
@@ -285,20 +297,22 @@ const Controls = ({serverStatus, canManage = false}) => {
                                 alt={mapImageAlt}
                                 view={mapView}
                                 setView={setMapView}
-                                isPixelated={activeSurface.kind === "platform"}
+                                isPixelated={activeSurfaceKind === "platform"}
                                 entityOverlay={mapEntityOverlay}
+                                detailZoom={activeSurfaceDetailZoom}
                                 onFullscreen={() => setIsMapLightboxOpen(true)}
                             />
                             <MapImageLightbox
                                 src={mapImageURL}
                                 alt={mapImageAlt}
-                                title={activeSurface.name}
+                                title={activeSurfaceLabel}
                                 isOpen={isMapLightboxOpen}
                                 close={() => setIsMapLightboxOpen(false)}
                                 view={mapView}
                                 setView={setMapView}
-                                isPixelated={activeSurface.kind === "platform"}
+                                isPixelated={activeSurfaceKind === "platform"}
                                 entityOverlay={mapEntityOverlay}
+                                detailZoom={activeSurfaceDetailZoom}
                             />
                         </div>
                         : <EmptyState
@@ -310,7 +324,8 @@ const Controls = ({serverStatus, canManage = false}) => {
                 type="secondary"
                 size="sm"
                 isLoading={Boolean(mapState?.running)}
-                isDisabled={!activeSave || Boolean(mapLoadError) || Boolean(mapState?.running)}
+                isDisabled={!mapSnapshotsEnabled || !activeSave || Boolean(mapLoadError) || Boolean(mapState?.running)}
+                title={!mapSnapshotsEnabled ? "Enable factory map snapshots under Server settings first." : undefined}
                 onClick={refreshMapSnapshot}
             ><FontAwesomeIcon icon={faArrowsRotate}/> Generate now</Button> : null}
         />

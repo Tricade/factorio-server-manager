@@ -18,6 +18,9 @@ import Button from "../components/Button";
 import Alert from "../components/Alert";
 import ScopeBadge from "../components/ScopeBadge";
 import {useProfiles} from "../context/ProfileContext";
+import mapSnapshotSettingsHelpers from "./mapSnapshotSettings.cjs";
+
+const {mapSnapshotFormValues, mapSnapshotRequestValues} = mapSnapshotSettingsHelpers;
 
 const humanize = key => key.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
 
@@ -42,7 +45,12 @@ const ServerSettings = ({serverStatus, canManage = false}) => {
     const settingsForm = useForm();
     const startupForm = useForm({defaultValues: {bind_ip: "0.0.0.0", port: 34197, selected_save: ""}});
     const autostartForm = useForm({defaultValues: {enabled: false}});
-    const mapSnapshotForm = useForm({defaultValues: {interval_minutes: 60}});
+    const mapSnapshotForm = useForm({defaultValues: {
+        mode: "automatic",
+        automatic_interval_minutes: 60,
+        automatic_only_when_no_players: false,
+        include_space_platforms: true
+    }});
     const {register, handleSubmit, reset, formState: {isDirty}} = settingsForm;
     const {
         register: registerStartup,
@@ -123,7 +131,7 @@ const ServerSettings = ({serverStatus, canManage = false}) => {
         setMapSnapshotLoadError("");
         try {
             const result = await serverResource.mapSnapshot();
-            resetMapSnapshot({interval_minutes: Number(result?.settings?.interval_minutes ?? 60)});
+            resetMapSnapshot(mapSnapshotFormValues(result?.settings));
         } catch (error) {
             setMapSnapshotLoadError("Map snapshot settings could not be loaded.");
         } finally {
@@ -175,11 +183,17 @@ const ServerSettings = ({serverStatus, canManage = false}) => {
     const saveMapSnapshots = async values => {
         setIsSavingMapSnapshots(true);
         try {
-            const result = await serverResource.setMapSnapshotSettings(Number(values.interval_minutes));
-            resetMapSnapshot({interval_minutes: Number(result?.interval_minutes ?? 60)});
-            window.flash(result?.interval_minutes === 0 ? "Automatic map snapshots disabled." : `Map snapshot interval set to ${result.interval_minutes} minutes.`, "green");
+            const request = mapSnapshotRequestValues(values);
+            const result = await serverResource.setMapSnapshotSettings(
+                request.enabled,
+                request.intervalMinutes,
+                request.automaticOnlyWhenNoPlayers,
+                request.includeSpacePlatforms
+            );
+            resetMapSnapshot(mapSnapshotFormValues(result));
+            window.flash("Map snapshot settings saved.", "green");
         } catch (error) {
-            window.flash(error?.response?.data || "Map snapshot interval could not be saved.", "red");
+            window.flash(error?.response?.data || "Map snapshot settings could not be saved.", "red");
         } finally {
             setIsSavingMapSnapshots(false);
         }
@@ -238,15 +252,24 @@ const ServerSettings = ({serverStatus, canManage = false}) => {
 
     const hasUnsavedChanges = isDirty || startupDirty || autostartDirty || mapSnapshotDirty;
     const autostartEnabled = Boolean(watchAutostart("enabled"));
-    const mapSnapshotInterval = Number(watchMapSnapshot("interval_minutes") || 0);
+    const mapSnapshotMode = watchMapSnapshot("mode") || "automatic";
+    const mapSnapshotInterval = Number(watchMapSnapshot("automatic_interval_minutes") || 60);
     const autostartStatusClass = !isLoadingAutostart && !autostartLoadError
         ? autostartEnabled ? "ui-status-badge--running" : "ui-status-badge--stopped"
         : "";
     const autostartStatusLabel = isLoadingAutostart ? "Loading…" : autostartLoadError ? "Unavailable" : autostartEnabled ? "Enabled" : "Disabled";
     const mapSnapshotStatusClass = !isLoadingMapSnapshots && !mapSnapshotLoadError
-        ? mapSnapshotInterval > 0 ? "ui-status-badge--running" : "ui-status-badge--stopped"
+        ? mapSnapshotMode !== "disabled" ? "ui-status-badge--running" : "ui-status-badge--stopped"
         : "";
-    const mapSnapshotStatusLabel = isLoadingMapSnapshots ? "Loading…" : mapSnapshotLoadError ? "Unavailable" : mapSnapshotInterval > 0 ? `Every ${mapSnapshotInterval} min` : "Manual only";
+    const mapSnapshotStatusLabel = isLoadingMapSnapshots
+        ? "Loading…"
+        : mapSnapshotLoadError
+            ? "Unavailable"
+            : mapSnapshotMode === "disabled"
+                ? "Disabled"
+                : mapSnapshotMode === "manual"
+                    ? "Manual only"
+                    : `Every ${mapSnapshotInterval} min`;
 
     return <>
         <PageHeader
@@ -328,25 +351,56 @@ const ServerSettings = ({serverStatus, canManage = false}) => {
         <form id="map-snapshot-settings-form" className="mb-5" onSubmit={handleMapSnapshotSubmit(saveMapSnapshots)}>
             <Panel
                 title="Map snapshots"
-                help="Creates a dashboard image from a temporary save copy with an isolated exporter. Set 0 to keep manual generation only."
+                help="Controls whether factory maps are generated automatically, only on demand, or not at all."
                 headerAction={<div className="flex flex-wrap items-center justify-end gap-2"><ScopeBadge scope="manager"/><span className={`ui-status-badge ${mapSnapshotStatusClass}`}>{mapSnapshotStatusLabel}</span></div>}
                 content={<>
                     {mapSnapshotLoadError && <Alert type="danger" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{mapSnapshotLoadError}</span><Button type="secondary" size="sm" onClick={fetchMapSnapshots}>Retry</Button></div></Alert>}
                     <fieldset className="ui-settings-fields" disabled={!canManage || isLoadingMapSnapshots || Boolean(mapSnapshotLoadError)}>
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                     <div className="ui-subcard p-4">
-                        <Label text="Automatic snapshot interval" htmlFor="interval_minutes" help="Minutes between completed map images. 0 disables scheduled generation; the Overview button remains available."/>
+                        <Label text="Generation mode" htmlFor="mode" help="Automatic also keeps Generate now available. Manual only stops the scheduler. Disabled blocks every new render but keeps the last completed images."/>
+                        <Select
+                            register={registerMapSnapshot("mode", {required: true})}
+                            options={[
+                                {value: "automatic", name: "Automatic and manual"},
+                                {value: "manual", name: "Manual only"},
+                                {value: "disabled", name: "Completely disabled"}
+                            ]}
+                        />
+                    </div>
+                    <div className="ui-subcard p-4">
+                        <Label text="Automatic snapshot interval" htmlFor="automatic_interval_minutes" help="Minutes between completed map images while automatic generation is selected."/>
                         <Input
                             type="number"
-                            min={0}
+                            min={1}
                             max={10080}
-                            step={5}
-                            register={registerMapSnapshot("interval_minutes", {required: true, min: 0, max: 10080, valueAsNumber: true})}
+                            step={1}
+                            disabled={mapSnapshotMode !== "automatic"}
+                            register={registerMapSnapshot("automatic_interval_minutes", {
+                                validate: value => mapSnapshotMode !== "automatic" || (Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 10080),
+                                valueAsNumber: true
+                            })}
                         />
-                        <Error error={mapSnapshotErrors.interval_minutes} message="Use a value from 0 to 10080 minutes."/>
+                        <Error error={mapSnapshotErrors.automatic_interval_minutes} message="Use a value from 1 to 10080 minutes."/>
+                    </div>
+                    <div className="ui-subcard p-4 flex items-center">
+                        <Checkbox
+                            text="Generate automatically only when no players are online"
+                            help="Before a scheduled run, the manager checks Factorio's built-in online-player count over localhost RCON. Manual generation is not blocked."
+                            register={registerMapSnapshot("automatic_only_when_no_players")}
+                        />
+                    </div>
+                    <div className="ui-subcard p-4 flex items-center">
+                        <Checkbox
+                            text="Include space platforms"
+                            help="When disabled, space platforms are skipped by the isolated exporter and no platform images or building-detail files are generated. The next snapshot replaces existing platform output."
+                            register={registerMapSnapshot("include_space_platforms")}
+                        />
+                    </div>
                     </div>
                 </fieldset></>}
                 actions={canManage ? <Button form="map-snapshot-settings-form" isSubmit isLoading={isSavingMapSnapshots} isDisabled={isLoadingMapSnapshots || Boolean(mapSnapshotLoadError) || !mapSnapshotDirty}>
-                    <FontAwesomeIcon icon={faMap}/> Save map interval
+                    <FontAwesomeIcon icon={faMap}/> Save map settings
                 </Button> : null}
             />
         </form>

@@ -47,8 +47,13 @@ export default {
         const response = await client.post('/api/map-snapshot/refresh');
         return response.data;
     },
-    setMapSnapshotSettings: async (intervalMinutes) => {
-        const response = await client.put('/api/map-snapshot/settings', {interval_minutes: intervalMinutes});
+    setMapSnapshotSettings: async (enabled, intervalMinutes, automaticOnlyWhenNoPlayers, includeSpacePlatforms) => {
+        const response = await client.put('/api/map-snapshot/settings', {
+            enabled,
+            interval_minutes: intervalMinutes,
+            automatic_only_when_no_players: automaticOnlyWhenNoPlayers,
+            include_space_platforms: includeSpacePlatforms
+        });
         return response.data;
     },
     stop: async () => {
