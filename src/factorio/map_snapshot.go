@@ -35,6 +35,7 @@ const (
 	mapSnapshotSettingsFileName   = "map-snapshot-settings.json"
 	mapSnapshotMetadataFileName   = "snapshot.json"
 	mapSnapshotExporterName       = "fsm-map-exporter"
+	mapSnapshotExporterVersion    = "0.2.0"
 	defaultMapSnapshotInterval    = 60
 	maximumMapSnapshotInterval    = 7 * 24 * 60
 	maximumMapSnapshotDimension   = 4096
@@ -53,6 +54,7 @@ const (
 
 var (
 	ErrMapSnapshotBusy            = errors.New("a map snapshot is already being generated")
+	ErrMapSnapshotsDisabled       = errors.New("factory map snapshots are disabled")
 	ErrMapSnapshotNotFound        = errors.New("map snapshot not found")
 	ErrMapSnapshotSurfaceNotFound = errors.New("map snapshot surface not found")
 	ErrMapSnapshotDetailsNotFound = errors.New("map snapshot entity details not found")
@@ -60,7 +62,10 @@ var (
 )
 
 type MapSnapshotSettings struct {
-	IntervalMinutes int `json:"interval_minutes"`
+	Enabled                    bool `json:"enabled"`
+	IntervalMinutes            int  `json:"interval_minutes"`
+	AutomaticOnlyWhenNoPlayers bool `json:"automatic_only_when_no_players"`
+	IncludeSpacePlatforms      bool `json:"include_space_platforms"`
 }
 
 type MapSnapshotSurface struct {
@@ -237,6 +242,13 @@ var mapSnapshotSettingsPath = func() string {
 var mapSnapshotRunFactorio = func(timeout time.Duration, args []string) error {
 	return runFactorioWorldCommand(timeout, args)
 }
+var mapSnapshotServerRunning = func() bool {
+	return GetFactorioServer().GetRunning()
+}
+var mapSnapshotServerBusy = func() bool {
+	return GetFactorioServer().IsBusy()
+}
+var mapSnapshotConnectedPlayerCount = connectedPlayerCount
 
 func LoadMapSnapshotSettings() (MapSnapshotSettings, error) {
 	mapSnapshotSettingsMutex.Lock()
@@ -247,12 +259,14 @@ func LoadMapSnapshotSettings() (MapSnapshotSettings, error) {
 func loadMapSnapshotSettings() (MapSnapshotSettings, error) {
 	contents, err := os.ReadFile(mapSnapshotSettingsPath())
 	if errors.Is(err, os.ErrNotExist) {
-		return MapSnapshotSettings{IntervalMinutes: defaultMapSnapshotInterval}, nil
+		return defaultMapSnapshotSettings(), nil
 	}
 	if err != nil {
 		return MapSnapshotSettings{}, fmt.Errorf("read map snapshot settings: %w", err)
 	}
-	var settings MapSnapshotSettings
+	// Start from defaults so settings files written by older releases keep
+	// including platforms until an administrator explicitly disables them.
+	settings := defaultMapSnapshotSettings()
 	if err := json.Unmarshal(contents, &settings); err != nil {
 		return MapSnapshotSettings{}, fmt.Errorf("decode map snapshot settings: %w", err)
 	}
@@ -260,6 +274,15 @@ func loadMapSnapshotSettings() (MapSnapshotSettings, error) {
 		return MapSnapshotSettings{}, err
 	}
 	return settings, nil
+}
+
+func defaultMapSnapshotSettings() MapSnapshotSettings {
+	return MapSnapshotSettings{
+		Enabled:                    true,
+		IntervalMinutes:            defaultMapSnapshotInterval,
+		AutomaticOnlyWhenNoPlayers: false,
+		IncludeSpacePlatforms:      true,
+	}
 }
 
 func SetMapSnapshotSettings(settings MapSnapshotSettings) (MapSnapshotSettings, error) {
@@ -325,6 +348,13 @@ func GetMapSnapshotState() (MapSnapshotState, error) {
 var mapSnapshotRuntime mapSnapshotRuntimeState
 
 func TriggerMapSnapshot() (MapSnapshotState, error) {
+	settings, err := LoadMapSnapshotSettings()
+	if err != nil {
+		return MapSnapshotState{}, err
+	}
+	if !settings.Enabled {
+		return MapSnapshotState{Settings: settings}, ErrMapSnapshotsDisabled
+	}
 	if !mapSnapshotOperationMutex.TryLock() {
 		state, _ := GetMapSnapshotState()
 		return state, ErrMapSnapshotBusy
@@ -396,7 +426,7 @@ func mapSnapshotSchedulerLoop() {
 
 func mapSnapshotScheduleIfDue() {
 	settings, err := LoadMapSnapshotSettings()
-	if err != nil || settings.IntervalMinutes == 0 {
+	if err != nil || !settings.Enabled || settings.IntervalMinutes == 0 {
 		return
 	}
 	state, err := GetMapSnapshotState()
@@ -413,9 +443,31 @@ func mapSnapshotScheduleIfDue() {
 	if !lastActivity.IsZero() && mapSnapshotNow().UTC().Before(lastActivity.Add(time.Duration(settings.IntervalMinutes)*time.Minute)) {
 		return
 	}
+	allowed, err := mapSnapshotAutomaticRunAllowed(settings)
+	if err != nil {
+		log.Printf("Unable to verify that the Factorio server is empty before a scheduled map snapshot: %v", err)
+		return
+	}
+	if !allowed {
+		return
+	}
 	if _, err := TriggerMapSnapshot(); err != nil && !errors.Is(err, ErrMapSnapshotBusy) {
 		log.Printf("Unable to schedule Factorio map snapshot: %v", err)
 	}
+}
+
+func mapSnapshotAutomaticRunAllowed(settings MapSnapshotSettings) (bool, error) {
+	if !settings.AutomaticOnlyWhenNoPlayers || !mapSnapshotServerBusy() {
+		return true, nil
+	}
+	if !mapSnapshotServerRunning() {
+		return false, nil
+	}
+	players, err := mapSnapshotConnectedPlayerCount()
+	if err != nil {
+		return false, err
+	}
+	return players == 0, nil
 }
 
 func generateActiveMapSnapshot(expectedProfileID string) error {
@@ -438,6 +490,13 @@ func generateActiveMapSnapshot(expectedProfileID string) error {
 	}
 	if err := validateMapSnapshotFactorioVersion(profile.InstalledVersion); err != nil {
 		return err
+	}
+	settings, err := LoadMapSnapshotSettings()
+	if err != nil {
+		return err
+	}
+	if !settings.Enabled {
+		return ErrMapSnapshotsDisabled
 	}
 	directories := profileActiveDirectories()
 	serverStatus := GetFactorioServer().Snapshot()
@@ -462,7 +521,7 @@ func generateActiveMapSnapshot(expectedProfileID string) error {
 	}
 
 	modsDirectory := filepath.Join(workDirectory, "mods")
-	if err := prepareMapSnapshotMods(directories["mods"], modsDirectory, profile.InstalledVersion); err != nil {
+	if err := prepareMapSnapshotMods(directories["mods"], modsDirectory, profile.InstalledVersion, settings.IncludeSpacePlatforms); err != nil {
 		return fmt.Errorf("prepare isolated mods: %w", err)
 	}
 	writeDataDirectory := filepath.Join(workDirectory, "write-data")
@@ -574,7 +633,7 @@ func findMapSnapshotSourceSave(directory, selected string, running bool) (*Save,
 	return nil, errors.New("no usable save is available for a map snapshot")
 }
 
-func prepareMapSnapshotMods(source, destination, factorioVersion string) error {
+func prepareMapSnapshotMods(source, destination, factorioVersion string, includeSpacePlatforms bool) error {
 	if err := os.MkdirAll(destination, 0700); err != nil {
 		return err
 	}
@@ -621,7 +680,7 @@ func prepareMapSnapshotMods(source, destination, factorioVersion string) error {
 			return err
 		}
 	}
-	if err := installMapSnapshotExporter(destination, factorioVersion); err != nil {
+	if err := installMapSnapshotExporter(destination, factorioVersion, includeSpacePlatforms); err != nil {
 		return err
 	}
 	return enableMapSnapshotExporter(filepath.Join(destination, "mod-list.json"))
@@ -674,8 +733,8 @@ func mapSnapshotModEntryRequired(name string, enabledMods map[string]struct{}) b
 	return false
 }
 
-func installMapSnapshotExporter(modsDirectory, factorioVersion string) error {
-	destination := filepath.Join(modsDirectory, mapSnapshotExporterName+"_0.1.0")
+func installMapSnapshotExporter(modsDirectory, factorioVersion string, includeSpacePlatforms bool) error {
+	destination := filepath.Join(modsDirectory, mapSnapshotExporterName+"_"+mapSnapshotExporterVersion)
 	if err := os.MkdirAll(destination, 0700); err != nil {
 		return err
 	}
@@ -698,6 +757,12 @@ func installMapSnapshotExporter(modsDirectory, factorioVersion string) error {
 			if err != nil {
 				return err
 			}
+		} else if name == "control.lua" {
+			placeholder := []byte("__FSM_INCLUDE_SPACE_PLATFORMS__")
+			if bytes.Count(contents, placeholder) != 1 {
+				return errors.New("map snapshot exporter platform setting placeholder is invalid")
+			}
+			contents = bytes.Replace(contents, placeholder, []byte(strconv.FormatBool(includeSpacePlatforms)), 1)
 		}
 		if err := os.WriteFile(filepath.Join(destination, name), contents, 0600); err != nil {
 			return err

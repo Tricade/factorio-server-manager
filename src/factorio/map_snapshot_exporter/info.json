@@ -1,6 +1,6 @@
 {
   "name": "fsm-map-exporter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "title": "Factorio Server Control Map Exporter",
   "author": "Tricade",
   "factorio_version": "2.0",

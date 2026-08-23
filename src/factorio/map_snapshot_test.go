@@ -26,17 +26,92 @@ func TestMapSnapshotSettingsPersistAndValidate(t *testing.T) {
 
 	settings, err := LoadMapSnapshotSettings()
 	require.NoError(t, err)
+	assert.True(t, settings.Enabled)
 	assert.Equal(t, defaultMapSnapshotInterval, settings.IntervalMinutes)
+	assert.False(t, settings.AutomaticOnlyWhenNoPlayers)
+	assert.True(t, settings.IncludeSpacePlatforms)
 
-	settings, err = SetMapSnapshotSettings(MapSnapshotSettings{IntervalMinutes: 135})
+	settings, err = SetMapSnapshotSettings(MapSnapshotSettings{Enabled: false, IntervalMinutes: 135, AutomaticOnlyWhenNoPlayers: true, IncludeSpacePlatforms: false})
 	require.NoError(t, err)
+	assert.False(t, settings.Enabled)
 	assert.Equal(t, 135, settings.IntervalMinutes)
+	assert.True(t, settings.AutomaticOnlyWhenNoPlayers)
+	assert.False(t, settings.IncludeSpacePlatforms)
 
 	settings, err = LoadMapSnapshotSettings()
 	require.NoError(t, err)
+	assert.False(t, settings.Enabled)
 	assert.Equal(t, 135, settings.IntervalMinutes)
+	assert.True(t, settings.AutomaticOnlyWhenNoPlayers)
+	assert.False(t, settings.IncludeSpacePlatforms)
+
+	require.NoError(t, os.WriteFile(path, []byte(`{"interval_minutes":45}`), 0600))
+	settings, err = LoadMapSnapshotSettings()
+	require.NoError(t, err)
+	assert.True(t, settings.Enabled, "legacy settings must retain the historical default")
+	assert.Equal(t, 45, settings.IntervalMinutes)
+	assert.False(t, settings.AutomaticOnlyWhenNoPlayers, "legacy settings must retain the historical scheduling behavior")
+	assert.True(t, settings.IncludeSpacePlatforms, "legacy settings must retain the historical default")
 	_, err = SetMapSnapshotSettings(MapSnapshotSettings{IntervalMinutes: maximumMapSnapshotInterval + 1})
 	assert.ErrorIs(t, err, ErrInvalidMapSnapshotSettings)
+}
+
+func TestMapSnapshotAutomaticRunCanWaitForAnEmptyServer(t *testing.T) {
+	originalRunning := mapSnapshotServerRunning
+	originalBusy := mapSnapshotServerBusy
+	originalPlayers := mapSnapshotConnectedPlayerCount
+	t.Cleanup(func() {
+		mapSnapshotServerRunning = originalRunning
+		mapSnapshotServerBusy = originalBusy
+		mapSnapshotConnectedPlayerCount = originalPlayers
+	})
+
+	mapSnapshotServerBusy = func() bool { return true }
+	mapSnapshotServerRunning = func() bool { return true }
+	mapSnapshotConnectedPlayerCount = func() (int, error) { return 2, nil }
+	allowed, err := mapSnapshotAutomaticRunAllowed(MapSnapshotSettings{AutomaticOnlyWhenNoPlayers: true})
+	require.NoError(t, err)
+	assert.False(t, allowed)
+
+	mapSnapshotConnectedPlayerCount = func() (int, error) { return 0, nil }
+	allowed, err = mapSnapshotAutomaticRunAllowed(MapSnapshotSettings{AutomaticOnlyWhenNoPlayers: true})
+	require.NoError(t, err)
+	assert.True(t, allowed)
+
+	mapSnapshotServerBusy = func() bool { return false }
+	mapSnapshotServerRunning = func() bool { return false }
+	mapSnapshotConnectedPlayerCount = func() (int, error) { return 3, nil }
+	allowed, err = mapSnapshotAutomaticRunAllowed(MapSnapshotSettings{AutomaticOnlyWhenNoPlayers: true})
+	require.NoError(t, err)
+	assert.True(t, allowed, "a stopped server has no connected players and must not require RCON")
+
+	mapSnapshotServerBusy = func() bool { return true }
+	allowed, err = mapSnapshotAutomaticRunAllowed(MapSnapshotSettings{AutomaticOnlyWhenNoPlayers: true})
+	require.NoError(t, err)
+	assert.False(t, allowed, "automatic generation must wait while Factorio is still starting")
+
+	mapSnapshotServerRunning = func() bool { return true }
+	mapSnapshotConnectedPlayerCount = func() (int, error) { return 0, assert.AnError }
+	allowed, err = mapSnapshotAutomaticRunAllowed(MapSnapshotSettings{AutomaticOnlyWhenNoPlayers: true})
+	assert.Error(t, err)
+	assert.False(t, allowed, "automatic generation must fail closed when an empty server cannot be verified")
+
+	allowed, err = mapSnapshotAutomaticRunAllowed(MapSnapshotSettings{AutomaticOnlyWhenNoPlayers: false})
+	require.NoError(t, err)
+	assert.True(t, allowed, "the optional occupancy gate must not affect ordinary automatic schedules")
+}
+
+func TestTriggerMapSnapshotRefusesDisabledFeature(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "map-snapshot-settings.json")
+	originalPath := mapSnapshotSettingsPath
+	mapSnapshotSettingsPath = func() string { return path }
+	t.Cleanup(func() { mapSnapshotSettingsPath = originalPath })
+	require.NoError(t, os.WriteFile(path, []byte(`{"enabled":false,"interval_minutes":60,"include_space_platforms":true}`), 0600))
+
+	state, err := TriggerMapSnapshot()
+	assert.ErrorIs(t, err, ErrMapSnapshotsDisabled)
+	assert.False(t, state.Settings.Enabled)
+	assert.False(t, state.Running)
 }
 
 func TestFindMapSnapshotSourceSaveUsesFreshAutosaveOnlyWhileRunning(t *testing.T) {
@@ -83,23 +158,29 @@ func TestPrepareMapSnapshotModsDoesNotChangeActiveModDirectory(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(source, "cargo-ships-extra_1.0.0.zip"), []byte("unrelated"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(source, "disabled-overhaul_9.9.9.zip"), []byte("large disabled archive"), 0644))
 
-	require.NoError(t, prepareMapSnapshotMods(source, destination, "2.1.14"))
+	require.NoError(t, prepareMapSnapshotMods(source, destination, "2.1.14", false))
 	activeList, err := os.ReadFile(filepath.Join(source, "mod-list.json"))
 	require.NoError(t, err)
 	assert.Equal(t, modList, activeList)
-	assert.NoDirExists(t, filepath.Join(source, mapSnapshotExporterName+"_0.1.0"))
+	exporterDirectoryName := mapSnapshotExporterName + "_" + mapSnapshotExporterVersion
+	assert.NoDirExists(t, filepath.Join(source, exporterDirectoryName))
 
 	isolatedList, err := os.ReadFile(filepath.Join(destination, "mod-list.json"))
 	require.NoError(t, err)
 	assert.Contains(t, string(isolatedList), mapSnapshotExporterName)
-	assert.DirExists(t, filepath.Join(destination, mapSnapshotExporterName+"_0.1.0"))
-	assert.FileExists(t, filepath.Join(destination, mapSnapshotExporterName+"_0.1.0", "control.lua"))
+	assert.DirExists(t, filepath.Join(destination, exporterDirectoryName))
+	control, err := os.ReadFile(filepath.Join(destination, exporterDirectoryName, "control.lua"))
+	require.NoError(t, err)
+	assert.Contains(t, string(control), "local include_space_platforms = false")
+	assert.Contains(t, string(control), `if include_space_platforms or kind ~= "platform" then`)
+	assert.NotContains(t, string(control), "__FSM_INCLUDE_SPACE_PLATFORMS__")
 	assert.FileExists(t, filepath.Join(destination, "cargo-ships_2.1.6.zip"))
 	assert.NoFileExists(t, filepath.Join(destination, "cargo-ships-extra_1.0.0.zip"))
 	assert.NoFileExists(t, filepath.Join(destination, "disabled-overhaul_9.9.9.zip"))
-	info, err := os.ReadFile(filepath.Join(destination, mapSnapshotExporterName+"_0.1.0", "info.json"))
+	info, err := os.ReadFile(filepath.Join(destination, exporterDirectoryName, "info.json"))
 	require.NoError(t, err)
 	assert.Contains(t, string(info), `"factorio_version": "2.1"`)
+	assert.Contains(t, string(info), `"version": "`+mapSnapshotExporterVersion+`"`)
 }
 
 func TestRenderMapSnapshotSurfaceDecodesRGB565(t *testing.T) {
