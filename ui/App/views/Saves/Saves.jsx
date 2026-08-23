@@ -12,6 +12,8 @@ import Alert from "../../components/Alert";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import Checkpoints from "./components/Checkpoints";
 import {useProfiles} from "../../context/ProfileContext";
+import ScopeBadge from "../../components/ScopeBadge";
+import EmptyState from "../../components/EmptyState";
 
 const formatSize = bytes => {
     if (!Number.isFinite(bytes)) return "—";
@@ -19,12 +21,13 @@ const formatSize = bytes => {
     return megabytes >= 100 ? `${megabytes.toFixed(0)} MB` : `${megabytes.toFixed(2)} MB`;
 };
 
-const Saves = ({serverStatus}) => {
+const Saves = ({serverStatus, canManage = false}) => {
     const {activeProfile, refreshProfiles} = useProfiles();
     const [saves, setSaves] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
     const [saveToDelete, setSaveToDelete] = useState(null);
+    const mutationsLocked = Boolean(!canManage || serverStatus?.known === false || serverStatus?.running || serverStatus?.stopping);
 
     const updateList = useCallback(async () => {
         setIsLoading(true);
@@ -66,13 +69,13 @@ const Saves = ({serverStatus}) => {
                         <a className="ui-icon-button" href={`/api/saves/dl/${encodeURIComponent(save.name)}`} aria-label={`Download ${save.name}`} title="Download save">
                             <FontAwesomeIcon icon={faDownload}/>
                         </a>
-                        <IconButton
+                        {canManage && <IconButton
                             type="danger"
                             label={`Delete ${save.name}`}
                             icon={faTrashAlt}
-                            disabled={Boolean(serverStatus?.running || serverStatus?.stopping)}
+                            disabled={mutationsLocked}
                             onClick={() => setSaveToDelete(save)}
-                        />
+                        />}
                     </div></td>
                 </tr>;
             })}</tbody>
@@ -83,14 +86,17 @@ const Saves = ({serverStatus}) => {
         <PageHeader
             title="Saves & checkpoints"
             actions={<div className="flex flex-wrap gap-2">
-                <div className="ui-status-badge">{saves.length} {saves.length === 1 ? "save" : "saves"}</div>
-                {!isLoading && !loadError && saves.length > 0 && <Link className="ui-button ui-button--success ui-button--sm" to="/profiles?new=fresh">
+                <ScopeBadge/>
+                <div className="ui-status-badge">{isLoading || loadError ? "Saves unavailable" : `${saves.length} ${saves.length === 1 ? "save" : "saves"}`}</div>
+                {canManage && !isLoading && !loadError && saves.length > 0 && <Link className="ui-button ui-button--success ui-button--sm" to="/profiles?new=fresh">
                     <FontAwesomeIcon icon={faPlus}/> New profile
                 </Link>}
             </div>}
         />
 
-        {serverStatus?.running && <Alert type="info" className="mb-5">
+        {!canManage && <Alert type="info" className="mb-5">Viewer access is read-only. Save downloads and checkpoint downloads remain available.</Alert>}
+
+        {canManage && serverStatus?.running && <Alert type="info" className="mb-5">
             Uploads and downloads stay available while Factorio is running. Creating or deleting worlds unlocks after the server stops.
         </Alert>}
 
@@ -102,18 +108,22 @@ const Saves = ({serverStatus}) => {
         </div>}/>}
 
         {!isLoading && !loadError && saves.length === 0 && <>
-            <Panel
+            {canManage ? <><Panel
                 className="mb-5"
                 title="Create world"
-                content={serverStatus?.running
-                    ? <Alert type="warning">Stop Factorio before creating a new world.</Alert>
+                content={mutationsLocked
+                    ? <Alert type="warning">Wait for a confirmed stopped status before creating a new world.</Alert>
                     : <NewWorldForm onSuccess={updateList}/>}
             />
             <Panel
                 className="mb-5"
                 title="Upload existing save"
                 content={<UploadSaveForm onSuccess={updateList}/>}
-            />
+            /></> : <Panel
+                className="mb-5"
+                headerAction={<ScopeBadge/>}
+                content={<EmptyState icon={faHardDrive} title="No saves in this profile"/>}
+            />}
         </>}
 
         {!isLoading && !loadError && saves.length > 0 && <>
@@ -123,13 +133,13 @@ const Saves = ({serverStatus}) => {
                 content={saveTable}
             />
 
-            <Checkpoints serverStatus={serverStatus} onRestore={updateList}/>
+            <Checkpoints serverStatus={serverStatus} onRestore={updateList} canManage={canManage}/>
 
-            <Panel
+            {canManage && <Panel
                 className="mb-5"
                 title="Upload save"
                 content={<UploadSaveForm onSuccess={updateList}/>}
-            />
+            />}
         </>}
 
         <ConfirmDialog

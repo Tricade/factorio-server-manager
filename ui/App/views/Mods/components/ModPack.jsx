@@ -7,7 +7,7 @@ import ConfirmDialog from "../../../components/ConfirmDialog";
 import Button from "../../../components/Button";
 import ButtonLink from "../../../components/ButtonLink";
 
-const ModPack = ({modPack, reloadModPacks, factorioVersion, reloadMods, disabled = false}) => {
+const ModPack = ({modPack, reloadModPacks, factorioVersion, reloadMods, profileLocked = false, readOnly = false}) => {
     const [dialog, setDialog] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -37,10 +37,8 @@ const ModPack = ({modPack, reloadModPacks, factorioVersion, reloadMods, disabled
                 <ButtonLink size="sm" type="ghost" href={`/api/mods/packs/${encodeURIComponent(modPack.name)}/download`}>
                     <FontAwesomeIcon icon={faDownload}/> Download
                 </ButtonLink>
-                {!disabled && <>
-                    <Button size="sm" type="secondary" isLoading={isLoading} onClick={() => setDialog("load")}><FontAwesomeIcon icon={faPlay}/> Load pack</Button>
-                    <Button size="sm" type="danger" onClick={() => setDialog("delete")}><FontAwesomeIcon icon={faTrashAlt}/> Delete</Button>
-                </>}
+                {!readOnly && <Button size="sm" type="secondary" isLoading={isLoading} isDisabled={profileLocked} title={profileLocked ? "Stop Factorio before replacing the active profile's mods" : undefined} onClick={() => setDialog("load")}><FontAwesomeIcon icon={faPlay}/> Load pack</Button>}
+                {!readOnly && <Button size="sm" type="danger" onClick={() => setDialog("delete")}><FontAwesomeIcon icon={faTrashAlt}/> Delete</Button>}
             </div>
         </div>
         <div className="p-3"><ModList
@@ -49,9 +47,9 @@ const ModPack = ({modPack, reloadModPacks, factorioVersion, reloadMods, disabled
             toggleMod={toggleMod}
             updateMod={updateMod}
             deleteMod={deleteMod}
-            disabled={disabled}
+            disabled={readOnly}
         /></div>
-        <ConfirmDialog
+        {!readOnly && <ConfirmDialog
             title={dialog === "delete" ? "Delete mod pack?" : "Load mod pack?"}
             content={dialog === "delete"
                 ? `${modPack.name} will be removed. Installed mods are not changed.`
@@ -59,7 +57,7 @@ const ModPack = ({modPack, reloadModPacks, factorioVersion, reloadMods, disabled
             isOpen={Boolean(dialog)}
             close={() => setDialog(null)}
             onSuccess={dialog === "delete" ? deleteModPack : loadModPack}
-        />
+        />}
     </div>;
 };
 

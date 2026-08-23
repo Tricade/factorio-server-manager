@@ -29,6 +29,8 @@ function ConfirmDialog({title, content, isOpen, close, onSuccess}) {
                 </>
             }
             isOpen={isOpen}
+            close={close}
+            dismissDisabled={isLoading}
         />
     );
 }

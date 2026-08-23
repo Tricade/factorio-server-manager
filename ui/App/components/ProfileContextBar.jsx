@@ -14,12 +14,13 @@ const isManagerPath = pathname => ["/profiles", "/user-management"].some(path =>
 const modeLabel = mode => mode === "space-age" ? "Space Age" : mode === "factorio" ? "Factorio" : "Custom";
 const channelLabel = target => target === "latest" ? "Experimental" : target === "stable" ? "Stable" : target ? "Pinned" : "";
 
-const ProfileContextBar = ({serverStatus, refreshServerStatus}) => {
+const ProfileContextBar = ({serverStatus, refreshServerStatus, canManage = false}) => {
     const location = useLocation();
     const {activeProfile, isLoading, error, refreshProfiles} = useProfiles();
     const [isStarting, setIsStarting] = useState(false);
     const [isStopping, setIsStopping] = useState(false);
     const [isKilling, setIsKilling] = useState(false);
+    const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
     const [isKillDialogOpen, setIsKillDialogOpen] = useState(false);
 
     if (isManagerPath(location.pathname)) return null;
@@ -38,14 +39,26 @@ const ProfileContextBar = ({serverStatus, refreshServerStatus}) => {
         </button>
     </section>;
 
-    const state = serverStatus?.stopping ? "stopping" : serverStatus?.running ? "running" : "stopped";
+    const statusKnown = serverStatus?.known !== false;
+    const state = !statusKnown ? "unknown" : serverStatus?.stopping ? "stopping" : serverStatus?.running ? "running" : "stopped";
     const version = activeProfile.installed_version || serverStatus?.fac_version || "Unknown";
     const channel = channelLabel(activeProfile.release_target);
     const selectedSave = activeProfile.save_count === 0
         ? "No save yet"
         : activeProfile.selected_save || serverStatus?.savefile || `${activeProfile.save_count} stored saves`;
 
-    const busy = isStarting || isStopping || isKilling || serverStatus?.stopping;
+    const busy = !statusKnown || isStarting || isStopping || isKilling || isRefreshingStatus || serverStatus?.stopping;
+
+    const retryServerStatus = async () => {
+        setIsRefreshingStatus(true);
+        try {
+            await refreshServerStatus?.();
+        } catch (statusError) {
+            window.flash("Factorio process status could not be loaded.", "red");
+        } finally {
+            setIsRefreshingStatus(false);
+        }
+    };
 
     const startServer = async () => {
         setIsStarting(true);
@@ -106,7 +119,13 @@ const ProfileContextBar = ({serverStatus, refreshServerStatus}) => {
             <span className="ui-context-value"><FontAwesomeIcon icon={faGamepad}/><strong>{modeLabel(activeProfile.game_mode)}</strong></span>
         </div>
         <div className="ui-context-actions" aria-label="Factorio process controls">
-            {serverStatus?.running
+            {!statusKnown
+                ? <Button size="sm" type="secondary" onClick={retryServerStatus} isLoading={isRefreshingStatus} title="Retry Factorio process status">
+                    <FontAwesomeIcon icon={faRotate}/> <span className="ui-context-action-label">Retry status</span>
+                </Button>
+                : !canManage
+                    ? <span className="ui-status-badge">Read-only access</span>
+                : serverStatus?.running
                 ? <>
                     <Button size="sm" onClick={stopServer} isLoading={isStopping || serverStatus?.stopping} isDisabled={isKilling || serverStatus?.stopping}>
                         <FontAwesomeIcon icon={faStop}/> <span className="ui-context-action-label">Save & stop</span>
@@ -126,13 +145,13 @@ const ProfileContextBar = ({serverStatus, refreshServerStatus}) => {
                     <FontAwesomeIcon icon={faPlay}/> <span className="ui-context-action-label">Start server</span>
                 </Button>}
         </div>
-        <ConfirmDialog
+        {canManage && <ConfirmDialog
             title="Force-stop Factorio?"
             content="This kills the game process immediately. Recent progress may be lost. Use Save & stop whenever possible."
             isOpen={isKillDialogOpen}
             close={() => setIsKillDialogOpen(false)}
             onSuccess={killServer}
-        />
+        />}
     </section>;
 };
 

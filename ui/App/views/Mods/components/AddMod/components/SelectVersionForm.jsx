@@ -20,6 +20,8 @@ const SelectVersionForm = ({releases, isOpen, close, review}) => {
     return <Modal
         isOpen={isOpen}
         title="Choose mod version"
+        close={close}
+        dismissDisabled={Boolean(reviewingVersion)}
         content={releases.length === 0
             ? <EmptyState title="No releases found" description="This mod does not publish a compatible downloadable release."/>
             : <div className="ui-table-wrap max-h-96 overflow-y-auto">

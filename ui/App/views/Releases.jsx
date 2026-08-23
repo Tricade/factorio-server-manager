@@ -8,6 +8,7 @@ import Button from "../components/Button";
 import Alert from "../components/Alert";
 import HelpTip from "../components/HelpTip";
 import Label from "../components/Label";
+import Error from "../components/Error";
 import ScopeBadge from "../components/ScopeBadge";
 import {useProfiles} from "../context/ProfileContext";
 
@@ -45,7 +46,7 @@ const ChoiceCard = ({option, selected, installed, disabled, onSelect, detail}) =
     </div>;
 };
 
-const Releases = ({serverStatus, refreshServerStatus}) => {
+const Releases = ({serverStatus, refreshServerStatus, canManage = false}) => {
     const {activeProfile, refreshProfiles} = useProfiles();
     const [targetType, setTargetType] = useState(null);
     const [exactVersion, setExactVersion] = useState("");
@@ -53,12 +54,16 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
     const [mode, setMode] = useState(null);
     const [modeStatus, setModeStatus] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [releaseLoadError, setReleaseLoadError] = useState("");
+    const [modeLoadError, setModeLoadError] = useState("");
     const [installing, setInstalling] = useState(false);
     const [savingMode, setSavingMode] = useState(false);
-    const locked = Boolean(serverStatus?.running || serverStatus?.stopping);
+    const locked = Boolean(!canManage || serverStatus?.known === false || serverStatus?.running || serverStatus?.stopping);
 
     const loadRuntime = useCallback(async () => {
         setIsLoading(true);
+        setReleaseLoadError("");
+        setModeLoadError("");
         const [releaseResult, modeResult] = await Promise.allSettled([server.releaseStatus(), server.gameMode()]);
         if (releaseResult.status === "fulfilled") {
             const status = releaseResult.value;
@@ -75,10 +80,16 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
         } else {
             setReleaseStatus(null);
             setTargetType(null);
+            setExactVersion("");
+            setReleaseLoadError("Factorio release status could not be loaded.");
         }
         if (modeResult.status === "fulfilled") {
             setModeStatus(modeResult.value);
             setMode(["factorio", "space-age"].includes(modeResult.value.mode) ? modeResult.value.mode : null);
+        } else {
+            setModeStatus(null);
+            setMode(null);
+            setModeLoadError("Game-mode status could not be loaded.");
         }
         setIsLoading(false);
     }, []);
@@ -87,7 +98,7 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
 
     const install = async () => {
         const target = targetType === "exact" ? exactVersion.trim() : targetType;
-        if (!target) return;
+        if (!target || (targetType === "exact" && !/^\d+\.\d+\.\d+$/.test(target))) return;
         setInstalling(true);
         try {
             const result = await server.installRelease(target);
@@ -119,26 +130,25 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
 
     const persistedTarget = releaseStatus?.installed_target;
     const hasPinnedTarget = Boolean(persistedTarget && !["stable", "latest"].includes(persistedTarget));
-    const installedChannelLabel = hasPinnedTarget
-        ? "Pinned"
-        : releaseStatus?.installed_channel === "latest"
-            ? "Experimental / latest"
-            : releaseStatus?.installed_channel === "stable" ? "Stable" : "Custom";
     const selectedTarget = targetType === "exact" ? exactVersion.trim() : targetType;
+    const exactVersionIsValid = /^\d+\.\d+\.\d+$/.test(exactVersion.trim());
+    const selectionIsValid = targetType === "exact" ? exactVersionIsValid : Boolean(selectedTarget);
     const selectionIsInstalled = targetType === "exact"
         ? releaseStatus?.installed_version === exactVersion.trim() && (hasPinnedTarget || releaseStatus?.installed_channel === "custom")
         : releaseStatus?.installed_channel === targetType;
 
     return <>
-        <PageHeader
-            title="Version & mode"
-            actions={<div className="flex flex-wrap gap-2">
-                <span className="ui-status-badge">Installed {releaseStatus?.installed_version || serverStatus?.fac_version || "Unknown"}</span>
-                <span className="ui-status-badge">{installedChannelLabel}</span>
-            </div>}
-        />
+        <PageHeader title="Version & mode"/>
 
-        {locked && <Alert type="warning" className="mb-5">Stop Factorio before replacing program files or changing the game mode.</Alert>}
+        {locked && <Alert type={canManage ? "warning" : "info"} className="mb-5">
+            {!canManage
+                ? "Viewer access is read-only. Installed version, update target, and game mode remain visible."
+                : serverStatus?.known === false
+                ? "Version and mode changes are locked until the Factorio process status is confirmed."
+                : serverStatus?.stopping
+                    ? "Version and mode changes remain locked while Factorio is shutting down."
+                    : "Stop Factorio before replacing program files or changing the game mode."}
+        </Alert>}
 
         <div className="ui-release-layout">
         <Panel
@@ -146,6 +156,12 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
             help="The selected channel or pinned version is stored with this profile and survives manager updates. Installed marks the executable currently present."
             headerAction={<ScopeBadge/>}
             content={<>
+                {releaseLoadError && <Alert type="danger" className="mb-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <span>{releaseLoadError}</span>
+                        <Button type="secondary" size="sm" onClick={loadRuntime}>Retry</Button>
+                    </div>
+                </Alert>}
                 {releaseStatus?.metadata_error && <Alert type="warning" className="mb-4">
                     Official release metadata is temporarily unavailable. The installed version remains unchanged and can still be read locally.
                 </Alert>}
@@ -157,7 +173,7 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
                         installed={option.id === "exact"
                             ? hasPinnedTarget || (!persistedTarget && releaseStatus?.installed_channel === "custom")
                             : !hasPinnedTarget && releaseStatus?.installed_channel === option.id}
-                        disabled={locked || installing || isLoading}
+                        disabled={locked || installing || isLoading || Boolean(releaseLoadError)}
                         onSelect={() => setTargetType(option.id)}
                         detail={option.id === "stable"
                             ? releaseStatus?.stable_version
@@ -171,10 +187,14 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
                         className="ui-input font-mono"
                         list="factorio-available-versions"
                         value={exactVersion}
-                        disabled={locked || installing || isLoading}
+                        disabled={locked || installing || isLoading || Boolean(releaseLoadError)}
                         onChange={event => setExactVersion(event.target.value)}
                         placeholder="2.1.14"
                         pattern="[0-9]+\.[0-9]+\.[0-9]+"
+                    />
+                    <Error
+                        error={Boolean(exactVersion.trim()) && !exactVersionIsValid}
+                        message="Use a three-part version such as 2.1.14."
                     />
                     <datalist id="factorio-available-versions">
                         {(releaseStatus?.available_versions || []).map(version => <option value={version} key={version}/>) }
@@ -188,9 +208,9 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
                     Experimental updates can move to a new Factorio compatibility line. Mod search follows the installed version after the switch.
                 </Alert>}
             </>}
-            actions={<Button type="success" onClick={install} isLoading={installing} isDisabled={locked || isLoading || !selectedTarget}>
+            actions={canManage ? <Button type="success" onClick={install} isLoading={installing} isDisabled={locked || isLoading || Boolean(releaseLoadError) || !selectionIsValid}>
                 <FontAwesomeIcon icon={faCloudArrowDown}/> {selectionIsInstalled ? "Reinstall" : "Install"} {selectedTarget || "version"}
-            </Button>}
+            </Button> : null}
         />
 
         <Panel
@@ -198,6 +218,12 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
             help="Space Age also controls the built-in Quality and Elevated Rails mods. This selection survives manager and game updates."
             headerAction={<ScopeBadge/>}
             content={<>
+                {modeLoadError && <Alert type="danger" className="mb-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <span>{modeLoadError}</span>
+                        <Button type="secondary" size="sm" onClick={loadRuntime}>Retry</Button>
+                    </div>
+                </Alert>}
                 {modeStatus?.mode === "custom" && <Alert type="warning" className="mb-4">
                     The built-in expansion mods currently form a custom mix. Choose a mode below to make the set consistent.
                 </Alert>}
@@ -207,7 +233,7 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
                         option={option}
                         selected={mode === option.id}
                         installed={modeStatus?.mode === option.id}
-                        disabled={locked || savingMode || isLoading || (option.id === "space-age" && !modeStatus?.space_age_available)}
+                        disabled={locked || savingMode || isLoading || Boolean(modeLoadError) || (option.id === "space-age" && !modeStatus?.space_age_available)}
                         onSelect={() => setMode(option.id)}
                         detail={option.id === "space-age" && !modeStatus?.space_age_available ? "Not included in this Factorio installation" : null}
                     />)}
@@ -218,9 +244,9 @@ const Releases = ({serverStatus, refreshServerStatus}) => {
                     </span>)}
                 </div>}
             </>}
-            actions={<Button type="success" onClick={saveGameMode} isLoading={savingMode} isDisabled={locked || isLoading || !mode || modeStatus?.mode === mode}>
+            actions={canManage ? <Button type="success" onClick={saveGameMode} isLoading={savingMode} isDisabled={locked || isLoading || Boolean(modeLoadError) || !mode || modeStatus?.mode === mode}>
                 <FontAwesomeIcon icon={mode === "space-age" ? faRocket : faIndustry}/> Apply {mode === "space-age" ? "Space Age" : "Factorio"}
-            </Button>}
+            </Button> : null}
         />
         </div>
     </>;

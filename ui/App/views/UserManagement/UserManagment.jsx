@@ -9,20 +9,32 @@ import EmptyState from "../../components/EmptyState";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import CreateUserForm from "./components/CreateUserForm";
 import ChangePasswordForm from "./components/ChangePasswordForm";
+import Alert from "../../components/Alert";
+import Button from "../../components/Button";
+import ScopeBadge from "../../components/ScopeBadge";
 
-const UserManagement = ({currentUser}) => {
+const UserManagement = ({currentUser, canManage = false}) => {
     const [users, setUsers] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
     const [userToDelete, setUserToDelete] = useState(null);
 
     const updateList = useCallback(async () => {
+        setIsLoading(true);
+        setLoadError("");
         try {
             setUsers(await user.list() || []);
         } catch (error) {
-            window.flash(error?.response?.data || "Users could not be loaded.", "red");
+            setLoadError("Manager users could not be loaded.");
+        } finally {
+            setIsLoading(false);
         }
     }, []);
 
-    useEffect(() => { updateList(); }, [updateList]);
+    useEffect(() => {
+        if (canManage) updateList();
+        else setIsLoading(false);
+    }, [canManage, updateList]);
 
     const deleteUser = async username => {
         await user.delete(username);
@@ -30,13 +42,24 @@ const UserManagement = ({currentUser}) => {
         window.flash(`${username} removed.`, "green");
     };
 
+    if (!canManage) return <>
+        <PageHeader title="Account & access"/>
+        <Alert type="info" className="mb-5">Your viewer account is read-only. You can inspect server data, download files, and change your own password.</Alert>
+        <Panel title={`Change ${currentUser?.username || "your"} password`} headerAction={<FontAwesomeIcon className="text-orange" icon={faKey}/>} content={<ChangePasswordForm/>}/>
+    </>;
+
     return <>
-        <PageHeader title="Users & access" actions={<div className="ui-status-badge">{users.length} {users.length === 1 ? "user" : "users"}</div>}/>
+        <PageHeader title="Users & access" actions={<div className="ui-status-badge">{isLoading || loadError ? "Users unavailable" : `${users.length} ${users.length === 1 ? "user" : "users"}`}</div>}/>
         <Panel
             title="Manager users"
-            description="Every account currently has administrative access to this manager."
+            description="Administrators can change the server; viewers have read-only access and can change only their own password."
             className="mb-5"
-            content={users.length === 0
+            headerAction={<ScopeBadge scope="manager"/>}
+            content={isLoading
+                ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faUsers} spin/><p className="mt-3">Loading users…</p></div></div>
+                : loadError
+                    ? <Alert type="danger"><div className="flex flex-wrap items-center gap-3"><span>{loadError}</span><Button type="secondary" size="sm" onClick={updateList}>Retry</Button></div></Alert>
+                : users.length === 0
                 ? <EmptyState icon={faUsers} title="No users returned"/>
                 : <div className="ui-table-wrap"><table className="ui-table">
                     <thead><tr><th>User</th><th>Role</th><th>Email</th><th className="text-right">Actions</th></tr></thead>

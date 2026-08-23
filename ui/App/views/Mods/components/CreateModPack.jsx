@@ -34,6 +34,8 @@ const CreateModPack = ({onSuccess}) => {
         <Modal
             title="Create mod pack"
             isOpen={isOpen}
+            close={() => setIsOpen(false)}
+            dismissDisabled={isCreating}
             content={<form id="create-mod-pack" onSubmit={handleSubmit(createModPack)}>
                 <Label text="Pack name" htmlFor="name"/>
                 <Input register={register("name", {required: true, pattern: /^[^\\/:*?\"<>|]+$/})} placeholder="Space Age co-op"/>

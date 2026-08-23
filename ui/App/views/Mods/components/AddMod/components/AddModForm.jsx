@@ -29,6 +29,13 @@ const AddModForm = ({setIsFactorioAuthenticated, fuse, factorioVersion, refetchI
     const query = watch("mod", "");
 
     useEffect(() => {
+        if (selectedMod && selectedMod.item.title !== query) {
+            setSelectedMod(null);
+            setReleases([]);
+            setSelectedRelease(null);
+            setDependencyPlan(null);
+            setSelectedOptional([]);
+        }
         if (!fuse || selectedMod?.item?.title === query) return undefined;
         if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
         debounceTimer.current = window.setTimeout(() => {

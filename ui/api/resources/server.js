@@ -1,4 +1,5 @@
 import client from "../client";
+import loadMapEntities from "./mapEntities";
 
 export default {
     factorioVersion: async () => {
@@ -25,6 +26,10 @@ export default {
         const response = await client.get('/api/server/status');
         return response.data;
     },
+    players: async () => {
+        const response = await client.get('/api/server/players');
+        return response.data;
+    },
     autostart: async () => {
         const response = await client.get('/api/server/autostart');
         return response.data;
@@ -37,6 +42,7 @@ export default {
         const response = await client.get('/api/map-snapshot');
         return response.data;
     },
+    mapSnapshotEntities: loadMapEntities,
     refreshMapSnapshot: async () => {
         const response = await client.post('/api/map-snapshot/refresh');
         return response.data;
@@ -46,7 +52,7 @@ export default {
         return response.data;
     },
     stop: async () => {
-        const response = await client.get('/api/server/stop');
+        const response = await client.post('/api/server/stop');
         return response.data;
     },
     start: async (ip, port, savefile) => {
@@ -58,7 +64,7 @@ export default {
         return response.data;
     },
     kill: async () => {
-        const response = await client.get('/api/server/kill');
+        const response = await client.post('/api/server/kill');
         return response.data;
     }
 }

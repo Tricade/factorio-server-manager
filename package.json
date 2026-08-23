@@ -1,7 +1,12 @@
 {
-  "name": "factorio-mod-manager",
-  "version": "0.15.1",
-  "description": "Factorio Server Manager UI",
+  "name": "factorio-server-manager",
+  "version": "0.16.0",
+  "private": true,
+  "allowScripts": {
+    "@parcel/watcher": false,
+    "fsevents": false
+  },
+  "description": "Factorio Server Control UI",
   "main": "ui/index.js",
   "scripts": {
     "dev": "npm run development",
@@ -11,7 +16,7 @@
     "build": "npm run production",
     "prod": "npm run production",
     "production": "cross-env NODE_ENV=production webpack --config=webpack.config.js --mode=production --progress",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test ui/tests/*.test.cjs"
   },
   "repository": {
     "type": "git",

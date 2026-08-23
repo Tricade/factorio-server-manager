@@ -2,7 +2,7 @@ import React, {useState} from "react";
 import {useLocation, useNavigate} from "react-router-dom";
 import {useForm} from "react-hook-form";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faGear, faLock} from "@fortawesome/free-solid-svg-icons";
+import {faLock} from "@fortawesome/free-solid-svg-icons";
 import user from "../../api/resources/user";
 import Button from "../components/Button";
 import Panel from "../components/Panel";
@@ -10,6 +10,7 @@ import Input from "../components/Input";
 import InputPassword from "../components/InputPassword";
 import Label from "../components/Label";
 import Error from "../components/Error";
+import BrandMark from "../components/BrandMark";
 
 const Login = ({handleLogin, isChecking = false}) => {
     const {register, handleSubmit, formState: {errors}} = useForm();
@@ -35,8 +36,8 @@ const Login = ({handleLogin, isChecking = false}) => {
     return <div className="ui-login-shell">
         <div className="ui-login-panel">
             <div className="mb-6 text-center">
-                <div className="ui-brand-mark mx-auto mb-4"><FontAwesomeIcon icon={faGear}/></div>
-                <h1 className="text-2xl font-bold tracking-tight">Factorio Server Manager</h1>
+                <BrandMark className="ui-login-brand mx-auto mb-4"/>
+                <h1 className="text-2xl font-bold tracking-tight">Factorio Server Control</h1>
             </div>
             <Panel content={<form onSubmit={handleSubmit(onSubmit)}>
                 <div className="mb-4">

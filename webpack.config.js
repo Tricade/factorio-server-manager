@@ -9,6 +9,7 @@ class VersionedIndexPlugin {
     constructor(uiVersion, assetVersion) {
         this.uiVersion = uiVersion;
         this.assetVersion = assetVersion;
+        this.staticAssets = ["favicon.ico", "favicon-32x32.png", "apple-touch-icon.png"];
     }
 
     apply(compiler) {
@@ -19,11 +20,18 @@ class VersionedIndexPlugin {
                     stage: webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL
                 },
                 () => {
-                    const template = fs.readFileSync(path.resolve(__dirname, 'ui/index.html'), 'utf8');
+                    const templatePath = path.resolve(__dirname, 'ui/index.html');
+                    compilation.fileDependencies.add(templatePath);
+                    const template = fs.readFileSync(templatePath, 'utf8');
                     const html = template
                         .replaceAll('__FSM_UI_VERSION__', this.uiVersion)
                         .replaceAll('__FSM_ASSET_VERSION__', this.assetVersion);
                     compilation.emitAsset('index.html', new webpack.sources.RawSource(html));
+                    for (const assetName of this.staticAssets) {
+                        const assetPath = path.resolve(__dirname, 'ui/assets', assetName);
+                        compilation.fileDependencies.add(assetPath);
+                        compilation.emitAsset(assetName, new webpack.sources.RawSource(fs.readFileSync(assetPath)));
+                    }
                 }
             );
         });
@@ -45,7 +53,8 @@ module.exports = (env, argv) => {
         output: {
             filename: '[name].js',
             path: path.resolve(__dirname, 'app'),
-            publicPath: ""
+            publicPath: "",
+            clean: true
         },
         resolve: {
             alias: {
@@ -87,6 +96,7 @@ module.exports = (env, argv) => {
                         {
                             loader: "sass-loader",
                             options: {
+                                "api": "modern",
                                 // always make sourceMap. resolver-url-loader is needing it
                                 "sourceMap": true,
                             }
