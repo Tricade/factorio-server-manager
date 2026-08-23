@@ -144,14 +144,12 @@ jobs:
             exit 1
           fi
 
-          release_error=$(mktemp)
-          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" >/dev/null 2>"$release_error"; then
-            echo "A GitHub release already exists for $RELEASE_TAG; refusing to replace it." >&2
-            exit 1
-          fi
-          if ! grep -Fq 'HTTP 404' "$release_error"; then
-            cat "$release_error" >&2
-            echo "Could not prove that the GitHub release target is unused." >&2
+          existing_release_ids=$(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id"
+          )
+          if test -n "$existing_release_ids"; then
+            echo "A GitHub release or draft already exists for $RELEASE_TAG; refusing to replace it." >&2
             exit 1
           fi
 
@@ -539,7 +537,20 @@ jobs:
             "build/factorio-server-manager-windows-$RELEASE_TAG.zip" \
             build/SHA256SUMS
 
-          release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")
+          draft_release_ids=$(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq ".[] | select(.tag_name == \"$RELEASE_TAG\" and .draft == true) | .id"
+          )
+          draft_release_count=$(printf '%s\n' "$draft_release_ids" |
+            awk 'NF { count++ } END { print count + 0 }')
+          test "$draft_release_count" -eq 1 || {
+            echo "Expected exactly one staged draft for $RELEASE_TAG, found $draft_release_count." >&2
+            exit 1
+          }
+          draft_release_id=$(printf '%s\n' "$draft_release_ids" | awk 'NF { print; exit }')
+          [[ "$draft_release_id" =~ ^[0-9]+$ ]]
+
+          release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/$draft_release_id")
           jq -e --arg tag "$RELEASE_TAG" '
             .tag_name == $tag and
             .draft == true and
@@ -563,13 +574,21 @@ jobs:
 
           test "$(git ls-remote --exit-code --refs origin "refs/tags/$RELEASE_TAG" |
             awk 'NR == 1 { print $1 }')" = "$EXPECTED_TAG_REF_SHA"
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .draft)" = true
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$draft_release_id" --jq .draft)" = true
 
           # This is the final external mutation: no public release exists before it.
-          gh release edit "$RELEASE_TAG" --draft=false --latest
+          published_json=$(
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$draft_release_id" \
+              -F draft=false \
+              -f make_latest=true
+          )
 
-          published_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")
-          jq -e '.draft == false and .prerelease == false and (.assets | length == 3)' \
+          jq -e --arg tag "$RELEASE_TAG" '
+            .tag_name == $tag and
+            .draft == false and
+            .prerelease == false and
+            (.assets | length == 3)
+          ' \
             <<<"$published_json" >/dev/null
           test "$(docker buildx imagetools inspect "$IMAGE:latest" |
             awk '$1 == "Digest:" { print $2; exit }')" = "$RELEASE_DIGEST"
