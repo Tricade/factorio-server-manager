@@ -10,7 +10,7 @@ export default {
         return response.data;
     },
     logout: async () => {
-        const response = await client.get('/api/logout');
+        const response = await client.post('/api/logout');
         return response.data;
     },
     list: async () => {

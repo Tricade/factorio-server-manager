@@ -7,6 +7,7 @@ import Panel from "../components/Panel";
 import Button from "../components/Button";
 import Alert from "../components/Alert";
 import LogViewport from "../components/LogViewport";
+import ScopeBadge from "../components/ScopeBadge";
 
 const Console = ({serverStatus, socketState}) => {
     const [logs, setLogs] = useState([]);
@@ -40,7 +41,7 @@ const Console = ({serverStatus, socketState}) => {
         {running && socketState !== "connected" && <Alert type="danger" className="mb-5">The live connection is reconnecting. Commands remain disabled until it is back.</Alert>}
         <Panel
             title="Factorio output"
-            headerAction={<span className="ui-status-badge">{logs.length} lines</span>}
+            headerAction={<div className="flex flex-wrap items-center gap-2"><ScopeBadge/><span className="ui-status-badge">{logs.length} lines</span></div>}
             content={<>
                 <LogViewport
                     lines={logs}

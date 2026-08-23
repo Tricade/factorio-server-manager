@@ -1,5 +1,5 @@
 [Unit]
-Description=Factorio Server Manager and Factorio game server
+Description=Factorio Server Control and Factorio game server
 Wants=network-online.target
 After=network-online.target
 

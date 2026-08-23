@@ -20,8 +20,9 @@ import CreateModPack from "./components/CreateModPack";
 import ModPack from "./components/ModPack";
 import ModList from "./components/ModList";
 import {useProfiles} from "../../context/ProfileContext";
+import ScopeBadge from "../../components/ScopeBadge";
 
-const Mods = ({serverStatus}) => {
+const Mods = ({serverStatus, canManage = false}) => {
     const {activeProfile, refreshProfiles} = useProfiles();
     const [installedMods, setInstalledMods] = useState([]);
     const [modPacks, setModPacks] = useState([]);
@@ -29,11 +30,15 @@ const Mods = ({serverStatus}) => {
     const [portalFactorioLine, setPortalFactorioLine] = useState(null);
     const [fuse, setFuse] = useState(undefined);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
+    const [portalLoadError, setPortalLoadError] = useState("");
+    const [reloadToken, setReloadToken] = useState(0);
     const [isDeletingAllMods, setIsDeletingAllMods] = useState(false);
     const [isUpdatingAllMods, setIsUpdatingAllMods] = useState(false);
     const [isDeleteAllDialogOpen, setIsDeleteAllDialogOpen] = useState(false);
     const [updatableMods, setUpdatableMods] = useState([]);
-    const disabled = Boolean(serverStatus?.running || serverStatus?.stopping);
+    const statusLocked = Boolean(serverStatus?.known === false || serverStatus?.running || serverStatus?.stopping);
+    const disabled = Boolean(!canManage || statusLocked || loadError);
 
     const addUpdatableMod = useCallback(mod => {
         setUpdatableMods(current => [...current.filter(existing => existing.modName !== mod.modName), mod]);
@@ -55,6 +60,9 @@ const Mods = ({serverStatus}) => {
 
     useEffect(() => {
         let active = true;
+        setIsLoading(true);
+        setLoadError("");
+        setPortalLoadError("");
         (async () => {
             let currentFactorioVersion = null;
             try {
@@ -64,7 +72,7 @@ const Mods = ({serverStatus}) => {
                 setFactorioVersion(currentFactorioVersion);
                 await Promise.all([fetchInstalledMods(), fetchModPacks()]);
             } catch (error) {
-                window.flash(error?.response?.data || "Mods could not be loaded.", "red");
+                if (active) setLoadError("Installed mods, mod packs, and compatibility data could not be loaded.");
             } finally {
                 if (active) setIsLoading(false);
             }
@@ -86,11 +94,14 @@ const Mods = ({serverStatus}) => {
                     }));
                 }
             } catch (error) {
-                if (active) window.flash("The Factorio mod portal index is currently unavailable.", "red");
+                if (active) {
+                    setFuse(undefined);
+                    setPortalLoadError("The Factorio mod portal index is currently unavailable.");
+                }
             }
         })();
         return () => { active = false; };
-    }, [fetchInstalledMods, fetchModPacks]);
+    }, [fetchInstalledMods, fetchModPacks, reloadToken]);
 
     const deleteAllMods = async () => {
         setIsDeletingAllMods(true);
@@ -124,15 +135,29 @@ const Mods = ({serverStatus}) => {
         <PageHeader
             title="Mods & mod packs"
             help={portalFactorioLine ? `Portal results and dependency resolution are filtered to Factorio ${portalFactorioLine}. Mod packs can be reused across profiles.` : "Portal results are filtered to the installed Factorio version. Mod packs can be reused across profiles."}
-            actions={<div className="ui-status-badge">{installedMods.length} installed</div>}
         />
 
-        {disabled && <Alert type="warning" className="mb-5">
-            Mod changes are locked while Factorio is running or stopping. Downloads and inspection remain available.
+        {!canManage && <Alert type="info" className="mb-5">Viewer access is read-only. Installed mods and mod packs can be inspected and downloaded.</Alert>}
+
+        {statusLocked && <Alert type="warning" className="mb-5">
+            Installed-mod changes are locked until Factorio is confirmed stopped. Manager-wide mod-pack organization and downloads remain available.
         </Alert>}
 
-        {!disabled && <TabControl>
-            <Tab title="Mod portal"><AddMod refetchInstalledMods={fetchInstalledMods} fuse={fuse} factorioVersion={portalFactorioLine}/></Tab>
+        {loadError && <Alert type="danger" className="mb-5">
+            <div className="flex flex-wrap items-center gap-3">
+                <span>{loadError}</span>
+                <Button size="sm" type="secondary" onClick={() => setReloadToken(token => token + 1)}>Retry</Button>
+            </div>
+        </Alert>}
+
+        {canManage && !disabled && <TabControl>
+            <Tab title="Mod portal"><AddMod
+                refetchInstalledMods={fetchInstalledMods}
+                fuse={fuse}
+                factorioVersion={portalFactorioLine}
+                portalError={portalLoadError}
+                retryPortal={() => setReloadToken(token => token + 1)}
+            /></Tab>
             <Tab title="Upload archive"><UploadMod refetchInstalledMods={fetchInstalledMods}/></Tab>
             <Tab title="Import from save"><LoadMods refreshMods={fetchInstalledMods}/></Tab>
         </TabControl>}
@@ -141,8 +166,11 @@ const Mods = ({serverStatus}) => {
             title="Installed mods"
             description={factorioVersion ? `Compatibility is evaluated against Factorio ${factorioVersion}.` : "Loading Factorio compatibility information…"}
             className="mb-5"
+            headerAction={<div className="flex flex-wrap items-center justify-end gap-2"><ScopeBadge/><span className="ui-status-badge">{installedMods.length} installed</span></div>}
             content={isLoading
                 ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faPuzzlePiece} spin/><p className="mt-3">Reading installed mods…</p></div></div>
+                : loadError
+                    ? <Alert type="danger">Installed mod data is unavailable.</Alert>
                 : <ModList
                     addUpdatableMod={addUpdatableMod}
                     toggleMod={toggleMod}
@@ -170,7 +198,12 @@ const Mods = ({serverStatus}) => {
         <Panel
             title="Mod packs"
             description="Manager-wide snapshots of mod combinations. Loading one replaces the installed mod set of the active profile only."
-            content={modPacks.length === 0
+            headerAction={<ScopeBadge scope="manager"/>}
+            content={isLoading
+                ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faPuzzlePiece} spin/><p className="mt-3">Reading mod packs…</p></div></div>
+                : loadError
+                    ? <Alert type="danger">Mod-pack data is unavailable.</Alert>
+                : modPacks.length === 0
                 ? <EmptyState icon={faPuzzlePiece} title="No mod packs"/>
                 : <div className="space-y-4">{modPacks.map(pack => <ModPack
                     factorioVersion={factorioVersion}
@@ -178,9 +211,10 @@ const Mods = ({serverStatus}) => {
                     modPack={pack}
                     reloadMods={fetchInstalledMods}
                     reloadModPacks={fetchModPacks}
-                    disabled={disabled}
+                    profileLocked={disabled}
+                    readOnly={!canManage}
                 />)}</div>}
-            actions={!disabled && <CreateModPack onSuccess={fetchModPacks}/>}
+            actions={canManage ? <CreateModPack onSuccess={fetchModPacks}/> : null}
         />
 
         <ConfirmDialog

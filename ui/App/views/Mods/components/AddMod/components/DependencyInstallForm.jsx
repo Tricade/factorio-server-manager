@@ -45,6 +45,8 @@ const DependencyInstallForm = ({plan, isOpen, close, onToggleOptional, onInstall
     return <Modal
         isOpen={isOpen}
         title="Review mod dependencies"
+        close={close}
+        dismissDisabled={isPlanning || isInstalling}
         content={!plan
             ? <div className="ui-empty-state"><FontAwesomeIcon icon={faSpinner} spin/><p className="mt-3">Resolving dependencies…</p></div>
             : <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-1">

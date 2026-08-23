@@ -21,17 +21,23 @@ import {useProfiles} from "../context/ProfileContext";
 
 const humanize = key => key.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
 
-const ServerSettings = ({serverStatus}) => {
+const ServerSettings = ({serverStatus, canManage = false}) => {
     const {activeProfile, applyProfileState} = useProfiles();
     const [settings, setSettings] = useState(null);
     const [saves, setSaves] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [settingsLoadError, setSettingsLoadError] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [isLoadingStartup, setIsLoadingStartup] = useState(true);
+    const [isLoadingAutostart, setIsLoadingAutostart] = useState(true);
+    const [isLoadingMapSnapshots, setIsLoadingMapSnapshots] = useState(true);
+    const [startupLoadError, setStartupLoadError] = useState("");
+    const [autostartLoadError, setAutostartLoadError] = useState("");
+    const [mapSnapshotLoadError, setMapSnapshotLoadError] = useState("");
     const [isSavingStartup, setIsSavingStartup] = useState(false);
     const [isSavingAutostart, setIsSavingAutostart] = useState(false);
     const [isSavingMapSnapshots, setIsSavingMapSnapshots] = useState(false);
-    const locked = Boolean(serverStatus?.running || serverStatus?.stopping);
+    const locked = Boolean(!canManage || serverStatus?.known === false || serverStatus?.running || serverStatus?.stopping);
 
     const settingsForm = useForm();
     const startupForm = useForm({defaultValues: {bind_ip: "0.0.0.0", port: 34197, selected_save: ""}});
@@ -61,13 +67,15 @@ const ServerSettings = ({serverStatus}) => {
 
     const fetchSettings = useCallback(async () => {
         setIsLoading(true);
+        setSettingsLoadError("");
         try {
             const result = await settingsResource.server.list();
             setSettings(result);
             reset(result);
             return result;
         } catch (error) {
-            window.flash(error?.response?.data || "Settings could not be loaded.", "red");
+            setSettings(null);
+            setSettingsLoadError("Multiplayer settings could not be loaded.");
         } finally {
             setIsLoading(false);
         }
@@ -76,12 +84,9 @@ const ServerSettings = ({serverStatus}) => {
     const fetchStartup = useCallback(async () => {
         if (!activeProfile) return;
         setIsLoadingStartup(true);
+        setStartupLoadError("");
         try {
-            const [availableSaves, autostart, mapSnapshot] = await Promise.all([
-                savesResource.list(false),
-                serverResource.autostart(),
-                serverResource.mapSnapshot()
-            ]);
+            const availableSaves = await savesResource.list(false);
             const orderedSaves = [...(availableSaves || [])].sort((left, right) => new Date(right.last_mod) - new Date(left.last_mod));
             setSaves(orderedSaves);
             const preferredSave = orderedSaves.find(save => save.name === activeProfile.selected_save)?.name
@@ -92,17 +97,44 @@ const ServerSettings = ({serverStatus}) => {
                 port: activeProfile.port || 34197,
                 selected_save: preferredSave
             });
-            resetAutostart({enabled: Boolean(autostart?.enabled)});
-            resetMapSnapshot({interval_minutes: Number(mapSnapshot?.settings?.interval_minutes ?? 60)});
         } catch (error) {
-            window.flash(error?.response?.data || "Startup settings could not be loaded.", "red");
+            setSaves([]);
+            setStartupLoadError("Available saves could not be loaded, so startup configuration is locked.");
         } finally {
             setIsLoadingStartup(false);
         }
-    }, [activeProfile, resetAutostart, resetMapSnapshot, resetStartup]);
+    }, [activeProfile, resetStartup]);
+
+    const fetchAutostart = useCallback(async () => {
+        setIsLoadingAutostart(true);
+        setAutostartLoadError("");
+        try {
+            const result = await serverResource.autostart();
+            resetAutostart({enabled: Boolean(result?.enabled)});
+        } catch (error) {
+            setAutostartLoadError("Autostart status could not be loaded.");
+        } finally {
+            setIsLoadingAutostart(false);
+        }
+    }, [resetAutostart]);
+
+    const fetchMapSnapshots = useCallback(async () => {
+        setIsLoadingMapSnapshots(true);
+        setMapSnapshotLoadError("");
+        try {
+            const result = await serverResource.mapSnapshot();
+            resetMapSnapshot({interval_minutes: Number(result?.settings?.interval_minutes ?? 60)});
+        } catch (error) {
+            setMapSnapshotLoadError("Map snapshot settings could not be loaded.");
+        } finally {
+            setIsLoadingMapSnapshots(false);
+        }
+    }, [resetMapSnapshot]);
 
     useEffect(() => { fetchSettings(); }, [fetchSettings]);
     useEffect(() => { fetchStartup(); }, [fetchStartup]);
+    useEffect(() => { fetchAutostart(); }, [fetchAutostart]);
+    useEffect(() => { fetchMapSnapshots(); }, [fetchMapSnapshots]);
 
     const saveStartup = async values => {
         setIsSavingStartup(true);
@@ -207,13 +239,27 @@ const ServerSettings = ({serverStatus}) => {
     const hasUnsavedChanges = isDirty || startupDirty || autostartDirty || mapSnapshotDirty;
     const autostartEnabled = Boolean(watchAutostart("enabled"));
     const mapSnapshotInterval = Number(watchMapSnapshot("interval_minutes") || 0);
+    const autostartStatusClass = !isLoadingAutostart && !autostartLoadError
+        ? autostartEnabled ? "ui-status-badge--running" : "ui-status-badge--stopped"
+        : "";
+    const autostartStatusLabel = isLoadingAutostart ? "Loading…" : autostartLoadError ? "Unavailable" : autostartEnabled ? "Enabled" : "Disabled";
+    const mapSnapshotStatusClass = !isLoadingMapSnapshots && !mapSnapshotLoadError
+        ? mapSnapshotInterval > 0 ? "ui-status-badge--running" : "ui-status-badge--stopped"
+        : "";
+    const mapSnapshotStatusLabel = isLoadingMapSnapshots ? "Loading…" : mapSnapshotLoadError ? "Unavailable" : mapSnapshotInterval > 0 ? `Every ${mapSnapshotInterval} min` : "Manual only";
 
     return <>
         <PageHeader
             title="Server settings"
             actions={hasUnsavedChanges ? <span className="ui-status-badge ui-status-badge--warning">Unsaved changes</span> : null}
         />
-        {locked && <Alert type="warning" className="mb-5"><FontAwesomeIcon icon={faLock}/> Stop Factorio to edit profile startup, network and multiplayer settings. Autostart remains configurable.</Alert>}
+        {locked && <Alert type={canManage ? "warning" : "info"} className="mb-5"><FontAwesomeIcon icon={faLock}/> {!canManage
+            ? "Viewer access is read-only. Profile and manager-wide settings remain visible."
+            : serverStatus?.known === false
+            ? "Profile startup and multiplayer settings are locked until the Factorio process status is confirmed. Manager-wide autostart and map scheduling remain configurable."
+            : serverStatus?.stopping
+                ? "Profile startup and multiplayer settings remain locked while Factorio is shutting down. Manager-wide autostart and map scheduling remain configurable."
+                : "Stop Factorio to edit profile startup, network and multiplayer settings. Manager-wide autostart and map scheduling remain configurable."}</Alert>}
 
         <div className="ui-settings-overview-grid mb-5">
             <form id="startup-settings-form" onSubmit={handleStartupSubmit(saveStartup)}>
@@ -222,7 +268,11 @@ const ServerSettings = ({serverStatus}) => {
                     title="Startup & network"
                     help="The bind address selects local interfaces. 0.0.0.0 is normally correct in Docker. The host port mapping is configured outside this manager."
                     headerAction={<ScopeBadge/>}
-                    content={<fieldset className="ui-settings-fields" disabled={locked || isLoadingStartup}>
+                    content={<>
+                        {startupLoadError && <Alert type="danger" className="mb-4">
+                            <div className="flex flex-wrap items-center gap-3"><span>{startupLoadError}</span><Button type="secondary" size="sm" onClick={fetchStartup}>Retry</Button></div>
+                        </Alert>}
+                    <fieldset className="ui-settings-fields" disabled={locked || isLoadingStartup || Boolean(startupLoadError)}>
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                             <div className="ui-subcard p-4">
                                 <Label text="Bind address" htmlFor="bind_ip" help="Use 0.0.0.0 to listen on every interface inside the container."/>
@@ -249,10 +299,10 @@ const ServerSettings = ({serverStatus}) => {
                                 <Error error={startupErrors.selected_save} message="Choose a save file."/>
                             </div>
                         </div>
-                    </fieldset>}
-                    actions={<Button form="startup-settings-form" isSubmit isLoading={isSavingStartup} isDisabled={locked || isLoadingStartup || !startupDirty}>
+                    </fieldset></>}
+                    actions={canManage ? <Button form="startup-settings-form" isSubmit isLoading={isSavingStartup} isDisabled={locked || isLoadingStartup || Boolean(startupLoadError) || !startupDirty}>
                         <FontAwesomeIcon icon={faNetworkWired}/> Save startup configuration
-                    </Button>}
+                    </Button> : null}
                 />
             </form>
 
@@ -261,14 +311,16 @@ const ServerSettings = ({serverStatus}) => {
                     className="h-full"
                     title="Autostart"
                     help="Starts the active profile with its configured bind address, port and selected save when the manager container starts. It does not start or stop Factorio immediately."
-                    headerAction={<div className="flex flex-wrap items-center justify-end gap-2"><ScopeBadge scope="manager"/><span className={`ui-status-badge ${autostartEnabled ? "ui-status-badge--running" : "ui-status-badge--stopped"}`}>{autostartEnabled ? "Enabled" : "Disabled"}</span></div>}
-                    content={<div className="ui-startup-setting">
+                    headerAction={<div className="flex flex-wrap items-center justify-end gap-2"><ScopeBadge scope="manager"/><span className={`ui-status-badge ${autostartStatusClass}`}>{autostartStatusLabel}</span></div>}
+                    content={<>
+                        {autostartLoadError && <Alert type="danger" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{autostartLoadError}</span><Button type="secondary" size="sm" onClick={fetchAutostart}>Retry</Button></div></Alert>}
+                        <fieldset disabled={!canManage || isLoadingAutostart || Boolean(autostartLoadError)}><div className="ui-startup-setting">
                         <div className="ui-startup-setting__icon"><FontAwesomeIcon icon={faPowerOff}/></div>
                         <Checkbox text="Start Factorio with this manager" register={registerAutostart("enabled")}/>
-                    </div>}
-                    actions={<Button form="autostart-settings-form" isSubmit isLoading={isSavingAutostart} isDisabled={isLoadingStartup || !autostartDirty}>
+                    </div></fieldset></>}
+                    actions={canManage ? <Button form="autostart-settings-form" isSubmit isLoading={isSavingAutostart} isDisabled={isLoadingAutostart || Boolean(autostartLoadError) || !autostartDirty}>
                         <FontAwesomeIcon icon={faPowerOff}/> Save autostart
-                    </Button>}
+                    </Button> : null}
                 />
             </form>
         </div>
@@ -277,8 +329,10 @@ const ServerSettings = ({serverStatus}) => {
             <Panel
                 title="Map snapshots"
                 help="Creates a dashboard image from a temporary save copy with an isolated exporter. Set 0 to keep manual generation only."
-                headerAction={<div className="flex flex-wrap items-center justify-end gap-2"><ScopeBadge scope="manager"/><span className={`ui-status-badge ${mapSnapshotInterval > 0 ? "ui-status-badge--running" : "ui-status-badge--stopped"}`}>{mapSnapshotInterval > 0 ? `Every ${mapSnapshotInterval} min` : "Manual only"}</span></div>}
-                content={<div className="ui-settings-fields">
+                headerAction={<div className="flex flex-wrap items-center justify-end gap-2"><ScopeBadge scope="manager"/><span className={`ui-status-badge ${mapSnapshotStatusClass}`}>{mapSnapshotStatusLabel}</span></div>}
+                content={<>
+                    {mapSnapshotLoadError && <Alert type="danger" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{mapSnapshotLoadError}</span><Button type="secondary" size="sm" onClick={fetchMapSnapshots}>Retry</Button></div></Alert>}
+                    <fieldset className="ui-settings-fields" disabled={!canManage || isLoadingMapSnapshots || Boolean(mapSnapshotLoadError)}>
                     <div className="ui-subcard p-4">
                         <Label text="Automatic snapshot interval" htmlFor="interval_minutes" help="Minutes between completed map images. 0 disables scheduled generation; the Overview button remains available."/>
                         <Input
@@ -290,10 +344,10 @@ const ServerSettings = ({serverStatus}) => {
                         />
                         <Error error={mapSnapshotErrors.interval_minutes} message="Use a value from 0 to 10080 minutes."/>
                     </div>
-                </div>}
-                actions={<Button form="map-snapshot-settings-form" isSubmit isLoading={isSavingMapSnapshots} isDisabled={isLoadingStartup || !mapSnapshotDirty}>
+                </fieldset></>}
+                actions={canManage ? <Button form="map-snapshot-settings-form" isSubmit isLoading={isSavingMapSnapshots} isDisabled={isLoadingMapSnapshots || Boolean(mapSnapshotLoadError) || !mapSnapshotDirty}>
                     <FontAwesomeIcon icon={faMap}/> Save map interval
-                </Button>}
+                </Button> : null}
             />
         </form>
 
@@ -304,11 +358,13 @@ const ServerSettings = ({serverStatus}) => {
                 headerAction={<ScopeBadge/>}
                 content={isLoading
                     ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faServer} spin/><p className="mt-3">Loading settings…</p></div></div>
+                    : settingsLoadError
+                        ? <Alert type="danger"><div className="flex flex-wrap items-center gap-3"><span>{settingsLoadError}</span><Button type="secondary" size="sm" onClick={fetchSettings}>Retry</Button></div></Alert>
                     : <fieldset className="ui-settings-fields" disabled={locked}>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">{fields.map(key => field(key, settings[key]))}</div>
                     </fieldset>}
             />
-            {isDirty && <aside className="ui-unsaved-bar" role="status" aria-live="polite">
+            {isDirty && settings && !settingsLoadError && <aside className="ui-unsaved-bar" role="status" aria-live="polite">
                 <div><strong>Unsaved multiplayer changes</strong></div>
                 <Button type="secondary" isDisabled={isSaving} onClick={() => reset(settings)}>Discard changes</Button>
                 <Button form="server-settings-form" isSubmit isLoading={isSaving} isDisabled={isLoading || locked}>

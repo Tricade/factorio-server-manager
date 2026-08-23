@@ -1,11 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime"
 	"net"
@@ -19,11 +19,13 @@ import (
 	"github.com/OpenFactorioServerManager/factorio-server-manager/bootstrap"
 	"github.com/OpenFactorioServerManager/factorio-server-manager/factorio"
 	"github.com/gorilla/sessions"
+	"gorm.io/gorm"
 
 	"github.com/gorilla/mux"
 )
 
 const readHttpBodyError = "Could not read the Request Body."
+const maximumJSONRequestBodyBytes int64 = 1 * 1024 * 1024
 
 type JSONResponseFileInput struct {
 	Success   bool        `json:"success"`
@@ -48,11 +50,18 @@ func ReadRequestBody(w http.ResponseWriter, r *http.Request) (body []byte, resp 
 		return
 	}
 
-	body, err = ioutil.ReadAll(r.Body)
+	r.Body = http.MaxBytesReader(w, r.Body, maximumJSONRequestBodyBytes)
+	body, err = io.ReadAll(r.Body)
 	if err != nil {
+		body = nil
 		resp = fmt.Sprintf("%s: %s", readHttpBodyError, err)
 		log.Println(resp)
-		w.WriteHeader(http.StatusInternalServerError)
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}
 	return
 }
@@ -173,8 +182,8 @@ func UploadSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	files := r.MultipartForm.File["savefile"]
-	if len(files) == 0 {
-		resp = "No save file provided"
+	if len(files) != 1 {
+		resp = "Exactly one save file must be provided"
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -202,7 +211,7 @@ func UploadSave(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 
-		temporary, err := os.CreateTemp(config.FactorioSavesDir, ".save-upload-*")
+		temporary, err := os.CreateTemp(config.FactorioSavesDir, ".save-upload-*.zip")
 		if err != nil {
 			resp = fmt.Sprintf("Error creating temporary save upload: %s", err)
 			log.Println(resp)
@@ -220,6 +229,12 @@ func UploadSave(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		if err := temporary.Sync(); err != nil {
+			temporary.Close()
+			resp = fmt.Sprintf("Error syncing uploaded save: %s", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		if err := temporary.Close(); err != nil {
 			resp = fmt.Sprintf("Error closing uploaded save: %s", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -230,9 +245,9 @@ func UploadSave(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if err := os.Rename(temporaryPath, filepath.Join(config.FactorioSavesDir, saveFile.Filename)); err != nil {
+		if err := factorio.ActivateSaveUpload(temporaryPath, saveFile.Filename); err != nil {
 			resp = fmt.Sprintf("Error activating uploaded save: %s", err)
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusUnprocessableEntity)
 			return
 		}
 	}
@@ -352,7 +367,7 @@ func LoadConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp = configContents
+	resp = configForRequest(configContents, requestUserIsAdministrator(r))
 
 	log.Printf("Sent config.ini response")
 }
@@ -371,7 +386,7 @@ func StartServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if server.GetRunning() || server.IsStopping() {
+	if server.IsBusy() {
 		resp = "Factorio server is already running or stopping"
 		w.WriteHeader(http.StatusConflict)
 		return
@@ -415,13 +430,17 @@ func StartServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	server.ConfigureStart(request.BindIP, request.Port, request.Savefile)
 	log.Printf("Starting Factorio server on %s:%d with save %q", request.BindIP, request.Port, request.Savefile)
-
-	startResult := make(chan error, 1)
-	go func() {
-		startResult <- server.Run()
-	}()
+	startResult, startErr := server.Start(request.BindIP, request.Port, request.Savefile)
+	if startErr != nil {
+		resp = fmt.Sprintf("Error starting Factorio server: %s", startErr)
+		if errors.Is(startErr, factorio.ErrServerActive) || errors.Is(startErr, factorio.ErrWorldGenerationBusy) {
+			w.WriteHeader(http.StatusConflict)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
 
 	deadline := time.NewTimer(4 * time.Second)
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -529,9 +548,9 @@ func FactorioVersion(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
-	var server = factorio.GetFactorioServer()
-	resp["version"] = server.Version.String()
-	resp["base_mod_version"] = server.BaseModVersion
+	snapshot := factorio.GetFactorioServer().Snapshot()
+	resp["version"] = snapshot.Version.String()
+	resp["base_mod_version"] = snapshot.BaseModVersion
 }
 
 func FactorioReleaseStatus(w http.ResponseWriter, r *http.Request) {
@@ -540,8 +559,16 @@ func FactorioReleaseStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Error reading official Factorio release status: %s", err), http.StatusBadGateway)
 		return
 	}
+	status = releaseStatusForRequest(status, requestUserIsAdministrator(r))
 	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 	WriteResponse(w, status)
+}
+
+func releaseStatusForRequest(status factorio.ReleaseStatus, administrator bool) factorio.ReleaseStatus {
+	if !administrator && status.MetadataError != "" {
+		status.MetadataError = "Official release metadata is temporarily unavailable."
+	}
+	return status
 }
 
 func GetGameMode(w http.ResponseWriter, r *http.Request) {
@@ -564,7 +591,11 @@ func UpdateGameMode(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := factorio.SetGameMode(request.Mode)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Error changing Factorio game mode: %s", err), http.StatusBadRequest)
+		statusCode := http.StatusBadRequest
+		if errors.Is(err, factorio.ErrServerActive) {
+			statusCode = http.StatusLocked
+		}
+		http.Error(w, fmt.Sprintf("Error changing Factorio game mode: %s", err), statusCode)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
@@ -646,18 +677,54 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, resp, err := UnmarshallUserJson(body, w)
-	if err != nil {
+	var credentials struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&credentials); err != nil {
+		resp = "Unable to parse login request"
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		resp = "Unable to parse login request"
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	credentials.Username = strings.TrimSpace(credentials.Username)
+	if credentials.Username == "" || len(credentials.Username) > 256 || credentials.Password == "" || len(credentials.Password) > 1024 {
+		resp = "Unable to parse login request"
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Logging in user: %s", user.Username)
-
-	err = auth.checkPassword(user.Username, user.Password)
+	rateLimitKeys := loginRateLimitKeys(r, credentials.Username)
+	if !loginAttemptAllowed(rateLimitKeys) {
+		w.Header().Set("Retry-After", strconv.Itoa(int(loginAttemptWindow/time.Second)))
+		resp = "Too many login attempts; try again later"
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
+	err = auth.checkPassword(credentials.Username, credentials.Password)
 	if err != nil {
-		resp = fmt.Sprintf("Password for user %s wrong", user.Username)
-		log.Println(resp)
+		recordLoginFailure(rateLimitKeys)
+		resp = "Invalid username or password"
 		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	clearLoginFailures(rateLimitKeys)
+	authenticatedUser, err := auth.getUser(credentials.Username)
+	if err != nil {
+		resp = "Unable to load authenticated user"
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	credentialVersion, err := sessionCredentialVersion(authenticatedUser.Password)
+	if err != nil {
+		resp = "Unable to initialize authenticated session"
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -666,21 +733,17 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session.Values["username"] = user.Username
+	session.Values["username"] = credentials.Username
+	session.Values["credential_version"] = credentialVersion
+	session.Options.MaxAge = loginSessionMaxAge
 
 	resp, err = SaveSession(w, r, session)
 	if err != nil {
 		return
 	}
 
-	log.Printf("User: %s, logged in successfully", user.Username)
+	log.Printf("User %q logged in successfully", credentials.Username)
 
-	authenticatedUser, err := auth.getUser(user.Username)
-	if err != nil {
-		resp = fmt.Sprintf("Unable to load authenticated user: %s", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 	authenticatedUser.Password = ""
 	resp = authenticatedUser
 }
@@ -701,6 +764,7 @@ func LogoutUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	delete(session.Values, "username")
+	session.Options.MaxAge = -1
 
 	resp, err = SaveSession(w, r, session)
 	if err != nil {
@@ -711,7 +775,6 @@ func LogoutUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetCurrentLogin(w http.ResponseWriter, r *http.Request) {
-	var err error
 	var resp interface{}
 
 	// add resp to the response
@@ -721,21 +784,12 @@ func GetCurrentLogin(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
-	session, resp, err := ReadSessionStore(w, r, "authentication")
-	if err != nil {
+	user, ok := authenticatedUserFromRequest(r)
+	if !ok {
+		resp = "Unable to read authenticated user"
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-
-	username := session.Values["username"].(string)
-
-	user, err := auth.getUser(username)
-	if err != nil {
-		resp = fmt.Sprintf("Error getting user: %s", err)
-		log.Println(resp)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
 	user.Password = ""
 
 	resp = user
@@ -786,7 +840,11 @@ func AddUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp = fmt.Sprintf("Error in adding user {%s}: %s", user.Username, err)
 		log.Println(resp)
-		w.WriteHeader(http.StatusInternalServerError)
+		if errors.Is(err, ErrInvalidUser) {
+			w.WriteHeader(http.StatusBadRequest)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -816,6 +874,13 @@ func RemoveUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp = fmt.Sprintf("Error in removing user {%s}, error: %s", user.Username, err)
 		log.Println(resp)
+		if strings.Contains(err.Error(), "single admin") {
+			w.WriteHeader(http.StatusConflict)
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -849,14 +914,14 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// only allow to change its own password
-	// get username from session cookie
-	session, resp, err := ReadSessionStore(w, r, "authentication")
-	if err != nil {
+	// Only allow changing the authenticated account's own password.
+	authenticatedUser, ok := authenticatedUserFromRequest(r)
+	if !ok {
+		resp = "Unable to read authenticated user"
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-
-	username := session.Values["username"].(string)
+	username := authenticatedUser.Username
 
 	// check if password for user is correct
 	err = auth.checkPassword(username, user.OldPassword)
@@ -879,7 +944,34 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp = fmt.Sprintf("Error changing password: %s", err)
 		log.Println(resp)
+		if errors.Is(err, ErrInvalidUser) {
+			w.WriteHeader(http.StatusBadRequest)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+	updatedUser, err := auth.getUser(username)
+	if err != nil {
+		resp = "Password changed, but the refreshed session could not be loaded"
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	credentialVersion, err := sessionCredentialVersion(updatedUser.Password)
+	if err != nil {
+		resp = "Password changed, but the refreshed session could not be secured"
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	session, sessionResp, err := ReadSessionStore(w, r, "authentication")
+	if err != nil {
+		resp = sessionResp
+		return
+	}
+	session.Values["credential_version"] = credentialVersion
+	session.Options.MaxAge = loginSessionMaxAge
+	if sessionResp, err = SaveSession(w, r, session); err != nil {
+		resp = sessionResp
 		return
 	}
 	if username == "admin" {
@@ -902,9 +994,58 @@ func GetServerSettings(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 	var server = factorio.GetFactorioServer()
-	resp = server.Settings
+	resp = serverSettingsForRequest(server.SettingsSnapshot(), requestUserIsAdministrator(r))
 
 	log.Printf("Sent server settings response")
+}
+
+// serverSettingsForRequest keeps read-only operational settings visible to
+// viewers without exposing Factorio account credentials or game passwords.
+// SettingsSnapshot already returns a detached map, so removing fields here
+// cannot mutate the running server configuration.
+func serverSettingsForRequest(settings map[string]interface{}, administrator bool) map[string]interface{} {
+	if administrator {
+		return settings
+	}
+	for name := range settings {
+		if sensitiveSettingName(name) {
+			delete(settings, name)
+		}
+	}
+	return settings
+}
+
+func configForRequest(config map[string]map[string]string, administrator bool) map[string]map[string]string {
+	if administrator {
+		return config
+	}
+	for section, values := range config {
+		if sensitiveConfigLocationName(section) {
+			delete(config, section)
+			continue
+		}
+		for name := range values {
+			if sensitiveSettingName(name) || sensitiveConfigLocationName(name) {
+				delete(values, name)
+			}
+		}
+	}
+	return config
+}
+
+func sensitiveSettingName(name string) bool {
+	compact := strings.NewReplacer("_", "", "-", "", " ", "", ".", "").Replace(strings.ToLower(strings.TrimSpace(name)))
+	for _, marker := range []string{"username", "password", "token", "secret", "credential", "userkey", "apikey", "accesskey", "privatekey", "signingkey", "encryptionkey", "proxy", "email"} {
+		if strings.Contains(compact, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func sensitiveConfigLocationName(name string) bool {
+	compact := strings.NewReplacer("_", "", "-", "", " ", "", ".", "").Replace(strings.ToLower(strings.TrimSpace(name)))
+	return strings.Contains(compact, "path") || strings.Contains(compact, "directory") || strings.HasSuffix(compact, "file") || strings.Contains(compact, "filename")
 }
 
 func UpdateServerSettings(w http.ResponseWriter, r *http.Request) {
@@ -930,60 +1071,18 @@ func UpdateServerSettings(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	settings, err := json.MarshalIndent(updatedSettings, "", "  ")
-	if err != nil {
-		resp = fmt.Sprintf("Failed to marshal server settings: %s", err)
+	if err := server.UpdateServerSettings(updatedSettings); err != nil {
+		resp = fmt.Sprintf("Failed to save server settings: %v", err)
 		log.Println(resp)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	server.Settings = updatedSettings
-	config := bootstrap.GetConfig()
-	temporary, err := os.CreateTemp(filepath.Dir(config.SettingsFile), ".server-settings-*.tmp")
-	if err != nil {
-		resp = fmt.Sprintf("Failed to create temporary server settings: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if _, err = temporary.Write(settings); err != nil {
-		temporary.Close()
-		resp = fmt.Sprintf("Failed to write server settings: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	if err = temporary.Close(); err == nil {
-		err = os.Chmod(temporaryPath, 0644)
-	}
-	if err == nil {
-		err = os.Rename(temporaryPath, config.SettingsFile)
-	}
-	if err != nil {
-		resp = fmt.Sprintf("Failed to save server settings: %v\n", err)
-		log.Println(resp)
-		w.WriteHeader(http.StatusInternalServerError)
+		if errors.Is(err, factorio.ErrServerActive) {
+			w.WriteHeader(http.StatusLocked)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		return
 	}
 
 	log.Printf("Saved Factorio server settings in server-settings.json")
-
-	if (server.Version.Greater(factorio.Version{0, 17, 0})) {
-		// save admins to adminJson
-		admins, err := json.MarshalIndent(updatedSettings["admins"], "", "  ")
-		if err != nil {
-			resp = fmt.Sprintf("Failed to marshal admins-Setting: %s", err)
-			log.Println(resp)
-			return
-		}
-
-		err = ioutil.WriteFile(config.FactorioAdminFile, admins, 0644)
-		if err != nil {
-			resp = fmt.Sprintf("Failed to save admins: %s", err)
-			log.Println(resp)
-			return
-		}
-	}
 
 	resp = fmt.Sprintf("Settings successfully saved")
 }

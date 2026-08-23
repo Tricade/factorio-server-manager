@@ -300,9 +300,9 @@ const NewWorldForm = ({onSuccess}) => {
             </Tab>
 
             <Tab title="Planet settings">
-                <div className="ui-world-planets" role="tablist" aria-label="Planet settings">
-                    {options.planets.map(planet => <button key={planet.name} type="button" role="tab"
-                        aria-selected={planet.name === selectedPlanet}
+                <div className="ui-world-planets" role="group" aria-label="Planet settings">
+                    {options.planets.map(planet => <button key={planet.name} type="button"
+                        aria-pressed={planet.name === selectedPlanet}
                         className={planet.name === selectedPlanet ? "is-active" : ""}
                         onClick={() => setSelectedPlanet(planet.name)}>
                         <strong>{planet.label}</strong><small>{planet.name === "nauvis" ? "Starting world" : "Space Age"}</small>
@@ -355,9 +355,9 @@ const NewWorldForm = ({onSuccess}) => {
                     </div>
                 </div>
 
-                <div className="ui-world-planets ui-world-planets--preview" role="tablist" aria-label="Planet previews">
-                    {options.planets.map(planet => <button key={planet.name} type="button" role="tab"
-                        aria-selected={planet.name === selectedPlanet}
+                <div className="ui-world-planets ui-world-planets--preview" role="group" aria-label="Planet previews">
+                    {options.planets.map(planet => <button key={planet.name} type="button"
+                        aria-pressed={planet.name === selectedPlanet}
                         className={planet.name === selectedPlanet ? "is-active" : ""}
                         onClick={() => setSelectedPlanet(planet.name)}>
                         <strong>{planet.label}</strong>

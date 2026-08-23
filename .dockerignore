@@ -4,13 +4,14 @@
 .vscode
 
 node_modules
-build
+build/*
 pkg
 dev
 dev_packs
-factorio-server-manager
-factorio-server-manager*
-factorio_server_manager*
+/factorio-server-manager
+/factorio-server-manager*
+/factorio_server_manager*
+!build/factorio-server-manager-linux.zip
 
 .env
 docker/.env

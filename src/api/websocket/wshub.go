@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"reflect"
+	"sync"
 
 	"github.com/OpenFactorioServerManager/factorio-server-manager/bootstrap"
 )
@@ -65,6 +66,9 @@ type wsHub struct {
 
 	// a list of all rooms
 	rooms map[string]*wsRoom
+	// rooms is also accessed by HTTP/WebSocket client goroutines through
+	// GetRoom, independently from the hub event loop.
+	roomsMu sync.RWMutex
 
 	// register a client to this hub
 	register chan *wsClient
@@ -77,6 +81,7 @@ type wsHub struct {
 
 	// list of all registered controlHandlers
 	controlHandlers map[reflect.Value]controlHandler
+	controlMu       sync.RWMutex
 
 	// register a controlHandler
 	RegisterControlHandler chan controlHandler
@@ -105,8 +110,19 @@ func init() {
 // remove a client from this hub and all of its rooms
 func (hub *wsHub) removeClient(client *wsClient) {
 	delete(hub.clients, client)
-	close(client.send)
+	// Do not close send while independent room goroutines may still be
+	// selecting a send to it. Closing the socket makes the pumps exit, and the
+	// client becomes collectible once it has been removed from every room.
+	if client.conn != nil {
+		_ = client.conn.Close()
+	}
+	hub.roomsMu.RLock()
+	rooms := make([]*wsRoom, 0, len(hub.rooms))
 	for _, room := range hub.rooms {
+		rooms = append(rooms, room)
+	}
+	hub.roomsMu.RUnlock()
+	for _, room := range rooms {
 		room.unregister <- client
 	}
 }
@@ -130,10 +146,26 @@ func (hub *wsHub) run() {
 				}
 			}
 		case function := <-hub.RegisterControlHandler:
+			hub.controlMu.Lock()
 			hub.controlHandlers[reflect.ValueOf(function)] = function
+			hub.controlMu.Unlock()
 		case function := <-hub.UnregisterControlHandler:
+			hub.controlMu.Lock()
 			delete(hub.controlHandlers, reflect.ValueOf(function))
+			hub.controlMu.Unlock()
 		}
+	}
+}
+
+func (hub *wsHub) dispatchControl(controls WsControls) {
+	hub.controlMu.RLock()
+	handlers := make([]controlHandler, 0, len(hub.controlHandlers))
+	for _, handler := range hub.controlHandlers {
+		handlers = append(handlers, handler)
+	}
+	hub.controlMu.RUnlock()
+	for _, handler := range handlers {
+		go handler(controls)
 	}
 }
 
@@ -148,20 +180,28 @@ func (hub *wsHub) Broadcast(message interface{}) {
 // get a websocket room or create it, if it doesn't exist yet.
 // Also starts the rooms subroutine `wsRoom.run()`
 func (hub *wsHub) GetRoom(name string) *wsRoom {
+	hub.roomsMu.RLock()
 	if room, ok := hub.rooms[name]; ok {
-		return room
-	} else {
-		room := &wsRoom{
-			name:       name,
-			clients:    make(map[*wsClient]bool),
-			register:   make(chan *wsClient),
-			unregister: make(chan *wsClient),
-			send:       make(chan wsMessage),
-		}
-		hub.rooms[name] = room
-		go room.run()
+		hub.roomsMu.RUnlock()
 		return room
 	}
+	hub.roomsMu.RUnlock()
+
+	hub.roomsMu.Lock()
+	defer hub.roomsMu.Unlock()
+	if room, ok := hub.rooms[name]; ok {
+		return room
+	}
+	room := &wsRoom{
+		name:       name,
+		clients:    make(map[*wsClient]bool),
+		register:   make(chan *wsClient),
+		unregister: make(chan *wsClient),
+		send:       make(chan wsMessage),
+	}
+	hub.rooms[name] = room
+	go room.run()
+	return room
 }
 
 // run starts a websocket room. This has to be run as a subroutine `go room.run()`
@@ -169,15 +209,24 @@ func (room *wsRoom) run() {
 	for {
 		select {
 		case client := <-room.register:
+			if !client.maySubscribeRoom(room.name) {
+				continue
+			}
 			room.clients[client] = true
 
 			// some hardcoded stuff for gamelog room
 			if room.name == "gamelog" {
 				// send cached log to registered client
+			cacheReplay:
 				for _, logLine := range LogCache {
-					client.send <- wsMessage{
-						RoomName: "gamelog",
+					select {
+					case client.send <- wsMessage{
+						RoomName: room.name,
 						Message:  logLine,
+					}:
+					default:
+						delete(room.clients, client)
+						break cacheReplay
 					}
 				}
 			}
@@ -197,10 +246,16 @@ func (room *wsRoom) run() {
 			}
 		case message := <-room.send:
 			for client := range room.clients {
+				if !client.maySubscribeRoom(room.name) {
+					delete(room.clients, client)
+					continue
+				}
 				select {
 				case client.send <- message:
 				default:
-					room.unregister <- client
+					// This code already runs inside room.run. Sending to the
+					// room's own unbuffered unregister channel would deadlock.
+					delete(room.clients, client)
 				}
 			}
 

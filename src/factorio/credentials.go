@@ -3,7 +3,6 @@ package factorio
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -15,21 +14,25 @@ type Credentials struct {
 	Userkey  string `json:"userkey"`
 }
 
+var credentialsFilePath = func() string {
+	return bootstrap.GetConfig().FactorioCredentialsFile
+}
+
 func (credentials *Credentials) Save() error {
 	var err error
-	config := bootstrap.GetConfig()
 	credentialsJson, err := json.Marshal(credentials)
 	if err != nil {
 		log.Printf("error mashalling the credentials: %s", err)
 		return err
 	}
 
-	err = os.WriteFile(config.FactorioCredentialsFile, credentialsJson, 0600)
+	path := credentialsFilePath()
+	err = os.WriteFile(path, credentialsJson, 0600)
 	if err != nil {
 		log.Printf("error on saving the credentials. %s", err)
 		return err
 	}
-	if err = os.Chmod(config.FactorioCredentialsFile, 0600); err != nil {
+	if err = os.Chmod(path, 0600); err != nil {
 		log.Printf("error restricting credential file permissions: %s", err)
 		return err
 	}
@@ -39,21 +42,19 @@ func (credentials *Credentials) Save() error {
 
 func (credentials *Credentials) Load() (bool, error) {
 	var err error
-	config := bootstrap.GetConfig()
-	if _, err := os.Stat(config.FactorioCredentialsFile); os.IsNotExist(err) {
+	path := credentialsFilePath()
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return false, nil
 	}
 
-	fileBytes, err := ioutil.ReadFile(config.FactorioCredentialsFile)
+	fileBytes, err := os.ReadFile(path)
 	if err != nil {
-		credentials.Del()
 		log.Printf("error reading CredentialsFile: %s", err)
 		return false, err
 	}
 
 	err = json.Unmarshal(fileBytes, credentials)
 	if err != nil {
-		credentials.Del()
 		log.Printf("error on unmarshal credentials_file: %s", err)
 		return false, err
 	}
@@ -61,15 +62,13 @@ func (credentials *Credentials) Load() (bool, error) {
 	if credentials.Userkey != "" && credentials.Username != "" {
 		return true, nil
 	} else {
-		credentials.Del()
 		return false, errors.New("incredients incomplete")
 	}
 }
 
 func (credentials *Credentials) Del() error {
 	var err error
-	config := bootstrap.GetConfig()
-	err = os.Remove(config.FactorioCredentialsFile)
+	err = os.Remove(credentialsFilePath())
 	if err != nil {
 		log.Printf("error delete the credentialfile: %s", err)
 		return err

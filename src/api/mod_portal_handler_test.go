@@ -1,10 +1,33 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestModPortalLoginStatusReturnsBooleanWithoutCredentialDetails(t *testing.T) {
+	original := loadModPortalAuthenticationStatus
+	t.Cleanup(func() { loadModPortalAuthenticationStatus = original })
+
+	loadModPortalAuthenticationStatus = func() (bool, error) { return true, nil }
+	recorder := httptest.NewRecorder()
+	ModPortalLoginStatusHandler(recorder, httptest.NewRequest(http.MethodGet, "/api/mods/portal/loginstatus", nil))
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "true\n" {
+		t.Fatalf("unexpected successful login-status response: status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+
+	loadModPortalAuthenticationStatus = func() (bool, error) {
+		return false, errors.New(`open C:\\private\\factorio.auth: access denied`)
+	}
+	recorder = httptest.NewRecorder()
+	ModPortalLoginStatusHandler(recorder, httptest.NewRequest(http.MethodGet, "/api/mods/portal/loginstatus", nil))
+	if recorder.Code != http.StatusInternalServerError || recorder.Body.String() != "\"Unable to read Factorio mod portal login status\"\n" {
+		t.Fatalf("credential error leaked into login-status response: status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+}
 
 func TestModPortalInstallHandler(t *testing.T) {
 	CheckShort(t)

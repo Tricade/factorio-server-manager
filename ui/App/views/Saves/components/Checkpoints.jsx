@@ -13,6 +13,7 @@ import Error from "../../../components/Error";
 import IconButton from "../../../components/IconButton";
 import EmptyState from "../../../components/EmptyState";
 import ConfirmDialog from "../../../components/ConfirmDialog";
+import ScopeBadge from "../../../components/ScopeBadge";
 
 const defaultSettings = {
     interval_enabled: false,
@@ -35,9 +36,10 @@ const formatSize = bytes => {
     return megabytes >= 100 ? `${megabytes.toFixed(0)} MB` : `${megabytes.toFixed(2)} MB`;
 };
 
-const Checkpoints = ({serverStatus, onRestore}) => {
+const Checkpoints = ({serverStatus, onRestore, canManage = false}) => {
     const [state, setState] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
     const [isSavingSettings, setIsSavingSettings] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [restoringID, setRestoringID] = useState("");
@@ -51,10 +53,11 @@ const Checkpoints = ({serverStatus, onRestore}) => {
 
     const load = useCallback(async () => {
         setIsLoading(true);
+        setLoadError("");
         try {
             applyState(await savesResource.checkpoints.list(), true);
         } catch (error) {
-            window.flash(error?.response?.data || "Checkpoints could not be loaded.", "red");
+            setLoadError("Checkpoint data and schedule settings could not be loaded.");
         } finally {
             setIsLoading(false);
         }
@@ -63,11 +66,12 @@ const Checkpoints = ({serverStatus, onRestore}) => {
     useEffect(() => { load(); }, [load]);
 
     useEffect(() => {
+        if (!state) return undefined;
         const timer = window.setInterval(() => {
             savesResource.checkpoints.list().then(setState).catch(() => undefined);
         }, 30000);
         return () => window.clearInterval(timer);
-    }, []);
+    }, [Boolean(state)]);
 
     const saveSettings = async values => {
         setIsSavingSettings(true);
@@ -117,19 +121,30 @@ const Checkpoints = ({serverStatus, onRestore}) => {
     };
 
     const checkpoints = state?.checkpoints || [];
-    const busy = isCreating || isSavingSettings || Boolean(restoringID) || serverStatus?.stopping;
+    const statusUnknown = serverStatus?.known === false;
+    const busy = !canManage || statusUnknown || isLoading || Boolean(loadError) || !state || isCreating || isSavingSettings || Boolean(restoringID) || serverStatus?.stopping;
 
     return <><Panel
         className="mb-5"
         title="Fixed checkpoints"
         description="Keep verified, profile-specific world snapshots outside Factorio's rotating autosaves. Existing checkpoints are never overwritten."
-        headerAction={<span className="ui-status-badge">{checkpoints.length} stored</span>}
+        headerAction={<div className="flex flex-wrap items-center justify-end gap-2">
+            <ScopeBadge/>
+            <span className="ui-status-badge">{state ? checkpoints.length : "—"} stored</span>
+        </div>}
         content={<>
+            {loadError && <Alert type="danger" className="mb-5">
+                <div className="flex flex-wrap items-center gap-3">
+                    <span>{loadError} Existing settings are locked until they can be read.</span>
+                    <Button type="secondary" size="sm" onClick={load} isLoading={isLoading}>Retry</Button>
+                </div>
+            </Alert>}
             {state?.last_error && <Alert type="danger" className="mb-5">
                 <strong>Last background checkpoint failed.</strong><br/>{state.last_error}
             </Alert>}
 
-            <form id="checkpoint-settings" onSubmit={handleSubmit(saveSettings)}>
+            {canManage && <form id="checkpoint-settings" onSubmit={handleSubmit(saveSettings)}>
+                <fieldset disabled={busy}>
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-5">
                     <div className="ui-subcard p-4">
                         <Checkbox text="Create a checkpoint on a running-time interval" register={register("interval_enabled")}/>
@@ -160,16 +175,19 @@ const Checkpoints = ({serverStatus, onRestore}) => {
                         })}/>
                         <Error error={errors.retention_count} message="Use 0 to keep all, or choose up to 1000."/>
                     </div>
-                    <Button isSubmit form="checkpoint-settings" isLoading={isSavingSettings} isDisabled={isCreating}>Save schedule</Button>
+                    <Button isSubmit form="checkpoint-settings" isLoading={isSavingSettings} isDisabled={busy}>Save schedule</Button>
                     <Button type="success" onClick={create} isLoading={isCreating} isDisabled={busy}>
                         <FontAwesomeIcon icon={faFloppyDisk}/> Create checkpoint now
                     </Button>
                 </div>
-            </form>
+                </fieldset>
+            </form>}
 
             <div className="mt-5">
                 {isLoading
                     ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faHardDrive} spin/><p className="mt-3">Loading checkpoints…</p></div></div>
+                    : loadError
+                        ? null
                     : checkpoints.length === 0
                         ? <EmptyState icon={faFloppyDisk} title="No fixed checkpoints yet"/>
                         : <div className="ui-table-wrap">
@@ -184,20 +202,20 @@ const Checkpoints = ({serverStatus, onRestore}) => {
                                         <a className="ui-icon-button" href={`/api/checkpoints/${encodeURIComponent(checkpoint.id)}/download`} aria-label="Download checkpoint" title="Download checkpoint">
                                             <FontAwesomeIcon icon={faDownload}/>
                                         </a>
-                                        <IconButton
+                                        {canManage && <IconButton
                                             label="Restore as a new save"
                                             icon={faRotate}
                                             spin={restoringID === checkpoint.id}
                                             disabled={busy || serverStatus?.running}
                                             onClick={() => restore(checkpoint)}
-                                        />
-                                        <IconButton
+                                        />}
+                                        {canManage && <IconButton
                                             type="danger"
                                             label="Delete checkpoint"
                                             icon={faTrashAlt}
                                             disabled={busy}
                                             onClick={() => setCheckpointToDelete(checkpoint)}
-                                        />
+                                        />}
                                     </div></td>
                                 </tr>)}</tbody>
                             </table>
@@ -205,13 +223,13 @@ const Checkpoints = ({serverStatus, onRestore}) => {
             </div>
         </>}
     />
-        <ConfirmDialog
+        {canManage && <ConfirmDialog
             title="Delete fixed checkpoint?"
             content="This removes the selected checkpoint permanently. Normal saves and other checkpoints are not affected."
             isOpen={Boolean(checkpointToDelete)}
             close={() => setCheckpointToDelete(null)}
             onSuccess={() => remove(checkpointToDelete)}
-        />
+        />}
     </>;
 };
 

@@ -22,6 +22,13 @@ type RuntimeState struct {
 	InstalledVersion string `json:"installed_version"`
 }
 
+type runtimeStateFileSnapshot struct {
+	path     string
+	contents []byte
+	mode     os.FileMode
+	exists   bool
+}
+
 var runtimeStatePath = func() string {
 	return filepath.Join(filepath.Dir(bootstrap.GetConfig().ConfFile), runtimeStateFileName)
 }
@@ -117,4 +124,54 @@ func persistRuntimeState(target, installedVersion string) error {
 		return fmt.Errorf("write legacy release target: %w", err)
 	}
 	return nil
+}
+
+func snapshotRuntimeStateFiles() ([]runtimeStateFileSnapshot, error) {
+	statePath := runtimeStatePath()
+	paths := []string{
+		statePath,
+		filepath.Join(filepath.Dir(statePath), legacyReleaseTargetFileName),
+	}
+	snapshots := make([]runtimeStateFileSnapshot, 0, len(paths))
+	for _, path := range paths {
+		contents, err := os.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			snapshots = append(snapshots, runtimeStateFileSnapshot{path: path})
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("snapshot runtime metadata %s: %w", filepath.Base(path), err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("inspect runtime metadata %s: %w", filepath.Base(path), err)
+		}
+		snapshots = append(snapshots, runtimeStateFileSnapshot{
+			path:     path,
+			contents: contents,
+			mode:     info.Mode().Perm(),
+			exists:   true,
+		})
+	}
+	return snapshots, nil
+}
+
+func restoreRuntimeStateFiles(snapshots []runtimeStateFileSnapshot) error {
+	var restoreErrors []error
+	for _, snapshot := range snapshots {
+		if !snapshot.exists {
+			if err := os.Remove(snapshot.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				restoreErrors = append(restoreErrors, fmt.Errorf("remove new %s: %w", filepath.Base(snapshot.path), err))
+			}
+			continue
+		}
+		if err := os.WriteFile(snapshot.path, snapshot.contents, snapshot.mode); err != nil {
+			restoreErrors = append(restoreErrors, fmt.Errorf("restore %s: %w", filepath.Base(snapshot.path), err))
+			continue
+		}
+		if err := os.Chmod(snapshot.path, snapshot.mode); err != nil {
+			restoreErrors = append(restoreErrors, fmt.Errorf("restrict restored %s: %w", filepath.Base(snapshot.path), err))
+		}
+	}
+	return errors.Join(restoreErrors...)
 }

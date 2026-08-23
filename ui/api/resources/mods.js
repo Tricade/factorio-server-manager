@@ -46,7 +46,7 @@ const mods = {
             return response.data;
         },
         logout: async () => {
-            const response = await client.get('/api/mods/portal/logout');
+            const response = await client.delete('/api/mods/portal/logout');
             return response.data
         },
         installMultiple: async mods => {
@@ -74,7 +74,7 @@ const mods = {
             return response.data
         },
         info: async mod => {
-            const response = await client.get(`/api/mods/portal/info/${mod}`);
+            const response = await client.get(`/api/mods/portal/info/${encodeURIComponent(mod)}`);
             return response.data;
         }
     },
@@ -88,34 +88,34 @@ const mods = {
             return response.data;
         },
         delete: async name => {
-            const response = await client.post(`/api/mods/packs/${name}/delete`);
+            const response = await client.post(`/api/mods/packs/${encodeURIComponent(name)}/delete`);
             return response.data;
         },
         download: async name => {
-            const response = await client.get(`/api/mods/packs/${name}/download`);
+            const response = await client.get(`/api/mods/packs/${encodeURIComponent(name)}/download`);
             return response.data;
         },
         load: async name => {
-            const response = await client.post(`/api/mods/packs/${name}/load`);
+            const response = await client.post(`/api/mods/packs/${encodeURIComponent(name)}/load`);
             return response.data;
         },
         mods: {
             list: async packName => {
-                const response = await client.get(`/api/mods/packs/${packName}/list`);
+                const response = await client.get(`/api/mods/packs/${encodeURIComponent(packName)}/list`);
                 return response.data;
             },
             toggle: async (packName, modName) => {
-                const response = await client.post(`/api/mods/packs/${packName}/mod/toggle`, {
+                const response = await client.post(`/api/mods/packs/${encodeURIComponent(packName)}/mod/toggle`, {
                     name: modName
                 });
                 return response.data;
             },
             update: async (packName, {modName, downloadUrl, fileName}) => {
-                const response = await client.post(`/api/mods/packs/${packName}/mod/update`, {modName, downloadUrl, fileName})
+                const response = await client.post(`/api/mods/packs/${encodeURIComponent(packName)}/mod/update`, {modName, downloadUrl, fileName})
                 return response.data;
             },
             delete: async (packName, modName) => {
-                const response = await client.post(`/api/mods/packs/${packName}/mod/delete`, {
+                const response = await client.post(`/api/mods/packs/${encodeURIComponent(packName)}/mod/delete`, {
                     name: modName
                 });
                 return response.data;

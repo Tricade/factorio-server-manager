@@ -4,13 +4,15 @@ import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
     faBars, faCheck, faChevronRight, faCloudArrowDown, faFileLines, faFloppyDisk,
     faGamepad, faGaugeHigh, faLayerGroup, faMugHot, faMusic, faPuzzlePiece,
-    faPlus, faRightFromBracket, faServer, faSliders, faTerminal, faUsers, faXmark
+    faPlus, faRightFromBracket, faSliders, faTerminal, faUsers, faXmark
 } from "@fortawesome/free-solid-svg-icons";
 import Button from "./Button";
 import ProfileContextBar from "./ProfileContextBar";
 import HelpTip from "./HelpTip";
 import {useProfiles} from "../context/ProfileContext";
 import profilesResource from "../../api/resources/profiles";
+import BrandMark from "./BrandMark";
+import {lockBodyScroll} from "./overlay";
 
 const profileLinks = [
     ["Overview", "/", faGaugeHigh],
@@ -40,16 +42,64 @@ const mobileLinks = [
 ];
 
 const modeLabel = mode => mode === "space-age" ? "Space Age" : mode === "factorio" ? "Factorio" : "Custom";
+const isManagerPath = pathname => ["/profiles", "/user-management"].some(path => pathname === path || pathname.startsWith(path + "/"));
 
-const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, socketState}) => {
+const NavigationLink = ({item}) => {
+    const [label, to, icon] = item;
+    return <NavLink
+        end={to === "/"}
+        to={to}
+        className={({isActive}) => `ui-nav-link${isActive ? " is-active" : ""}`}
+    >
+        <FontAwesomeIcon className="ui-nav-link__icon" icon={icon}/>
+        <span>{label}</span>
+    </NavLink>;
+};
+
+const ExternalLink = ({item}) => {
+    const [label, href, icon] = item;
+    return <a className="ui-nav-link" href={href} target="_blank" rel="noreferrer">
+        <FontAwesomeIcon className="ui-nav-link__icon" icon={icon}/>
+        <span>{label}</span>
+        <span className="ui-nav-link__external" aria-hidden="true">↗</span>
+    </a>;
+};
+
+const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, socketState, canManage = false}) => {
     const [isNavOpen, setIsNavOpen] = useState(false);
+    const [isCompactNavigation, setIsCompactNavigation] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const [switchingProfileID, setSwitchingProfileID] = useState("");
     const profileMenuRef = useRef(null);
+    const sidebarRef = useRef(null);
     const location = useLocation();
     const {state, activeProfile, isLoading: isLoadingProfile, applyProfileState} = useProfiles();
     const isPrimaryMobileRoute = mobileLinks.some(([, to]) => to === location.pathname);
+    const profileSwitchLocked = !canManage || serverStatus?.known === false || serverStatus?.running || serverStatus?.stopping;
+    const visibleProfileLinks = canManage ? profileLinks : profileLinks.filter(([, path]) => path !== "/console");
+    const visibleManagerLinks = canManage
+        ? managerLinks
+        : managerLinks.map(item => item[1] === "/user-management" ? ["Account & access", item[1], item[2]] : item);
+    const outletKey = isManagerPath(location.pathname)
+        ? `manager:${location.pathname}`
+        : `profile:${activeProfile?.id || "loading"}`;
     const revision = !["", "unknown", "local"].includes(__FSM_UI_REVISION__) ? ` · ${__FSM_UI_REVISION__.slice(0, 8)}` : "";
+
+    useEffect(() => {
+        const media = window.matchMedia("(max-width: 1023px)");
+        const update = event => setIsCompactNavigation(event.matches);
+        if (media.addEventListener) media.addEventListener("change", update);
+        else media.addListener(update);
+        return () => {
+            if (media.removeEventListener) media.removeEventListener("change", update);
+            else media.removeListener(update);
+        };
+    }, []);
+
+    useEffect(() => {
+        const hidden = isCompactNavigation && !isNavOpen;
+        sidebarRef.current?.toggleAttribute("inert", hidden);
+    }, [isCompactNavigation, isNavOpen]);
 
     useEffect(() => {
         setIsNavOpen(false);
@@ -74,21 +124,20 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
     }, [isProfileMenuOpen]);
 
     useEffect(() => {
-        if (!isNavOpen) return undefined;
+        if (!isNavOpen || !isCompactNavigation) return undefined;
         const closeOnEscape = event => {
             if (event.key === "Escape") setIsNavOpen(false);
         };
-        const originalOverflow = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
+        const unlockBodyScroll = lockBodyScroll();
         document.addEventListener("keydown", closeOnEscape);
         return () => {
-            document.body.style.overflow = originalOverflow;
+            unlockBodyScroll();
             document.removeEventListener("keydown", closeOnEscape);
         };
-    }, [isNavOpen]);
+    }, [isCompactNavigation, isNavOpen]);
 
     const switchProfile = async profile => {
-        if (!profile || profile.active || serverStatus?.running || serverStatus?.stopping) return;
+        if (!profile || profile.active || profileSwitchLocked) return;
         setSwitchingProfileID(profile.id);
         try {
             applyProfileState(await profilesResource.activate(profile.id));
@@ -103,32 +152,11 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
         }
     };
 
-    const NavigationLink = ({item}) => {
-        const [label, to, icon] = item;
-        return <NavLink
-            end={to === "/"}
-            to={to}
-            className={({isActive}) => `ui-nav-link${isActive ? " is-active" : ""}`}
-        >
-            <FontAwesomeIcon className="ui-nav-link__icon" icon={icon}/>
-            <span>{label}</span>
-        </NavLink>;
-    };
-
-    const ExternalLink = ({item}) => {
-        const [label, href, icon] = item;
-        return <a className="ui-nav-link" href={href} target="_blank" rel="noreferrer">
-            <FontAwesomeIcon className="ui-nav-link__icon" icon={icon}/>
-            <span>{label}</span>
-            <span className="ui-nav-link__external" aria-hidden="true">↗</span>
-        </a>;
-    };
-
-    const SidebarContent = () => <>
+    const sidebarContent = <>
         <div className="ui-sidebar__brand">
-            <div className="ui-brand-mark"><FontAwesomeIcon icon={faServer}/></div>
+            <BrandMark/>
             <div className="ui-sidebar__brand-copy">
-                <strong>Factorio Server Manager</strong>
+                <strong>Factorio Server Control</strong>
             </div>
             <button className="ui-sidebar__close" onClick={() => setIsNavOpen(false)} aria-label="Close navigation">
                 <FontAwesomeIcon icon={faXmark}/>
@@ -139,8 +167,8 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
             <button
                 className="ui-profile-switcher"
                 type="button"
-                aria-haspopup="menu"
                 aria-expanded={isProfileMenuOpen}
+                aria-controls="profile-switch-menu"
                 onClick={() => setIsProfileMenuOpen(open => !open)}
             >
                 <div className="ui-profile-switcher__icon"><FontAwesomeIcon icon={faLayerGroup}/></div>
@@ -152,18 +180,17 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
                 <FontAwesomeIcon className={`ui-profile-switcher__arrow${isProfileMenuOpen ? " is-open" : ""}`} icon={faChevronRight}/>
             </button>
 
-            {isProfileMenuOpen && <div className="ui-profile-menu" role="menu" aria-label="Switch profile">
+            {isProfileMenuOpen && <div className="ui-profile-menu" id="profile-switch-menu" aria-label="Switch profile">
                 <div className="ui-profile-menu__header">
                     <span>Profiles</span>
-                    {(serverStatus?.running || serverStatus?.stopping) && <HelpTip content="Stop Factorio before switching profiles." label="Why profile switching is disabled"/>}
+                    {profileSwitchLocked && <HelpTip content={!canManage ? "Viewer accounts cannot switch profiles." : serverStatus?.known === false ? "Wait until the Factorio process status is known." : "Stop Factorio before switching profiles."} label="Why profile switching is disabled"/>}
                 </div>
                 <div className="ui-profile-menu__list">
                     {(state?.profiles || []).map(profile => <button
                         className={`ui-profile-menu__item${profile.active ? " is-active" : ""}`}
                         type="button"
-                        role="menuitem"
                         key={profile.id}
-                        disabled={profile.active || Boolean(switchingProfileID) || serverStatus?.running || serverStatus?.stopping}
+                        disabled={profile.active || Boolean(switchingProfileID) || profileSwitchLocked}
                         onClick={() => switchProfile(profile)}
                     >
                         <span>
@@ -174,9 +201,9 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
                         {switchingProfileID === profile.id && <span className="ui-profile-menu__busy"/>}
                     </button>)}
                 </div>
-                <Link className="ui-profile-menu__new" to="/profiles?new=fresh" role="menuitem">
+                {canManage && <Link className="ui-profile-menu__new" to="/profiles?new=fresh">
                     <FontAwesomeIcon icon={faPlus}/> New profile
-                </Link>
+                </Link>}
             </div>}
         </div>
 
@@ -184,11 +211,11 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
             <nav aria-label="Primary navigation">
                 <div className="ui-nav-section">
                     <p className="ui-nav-section-title">Server</p>
-                    {profileLinks.map(item => <NavigationLink key={item[1]} item={item}/>) }
+                    {visibleProfileLinks.map(item => <NavigationLink key={item[1]} item={item}/>) }
                 </div>
                 <div className="ui-nav-section">
                     <p className="ui-nav-section-title">Manager</p>
-                    {managerLinks.map(item => <NavigationLink key={item[1]} item={item}/>) }
+                    {visibleManagerLinks.map(item => <NavigationLink key={item[1]} item={item}/>) }
                 </div>
                 <div className="ui-nav-section">
                     <p className="ui-nav-section-title">Reference</p>
@@ -211,10 +238,11 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
             <div className="ui-manager-meta">
                 <span
                     className={`ui-connection-dot ui-connection-dot--${socketState}`}
-                    title={socketState === "connected" ? "Manager connection online" : socketState === "connecting" ? "Manager connection is reconnecting" : "Live updates offline"}
-                    aria-label={socketState === "connected" ? "Manager connection online" : socketState === "connecting" ? "Manager connection is reconnecting" : "Live updates offline"}
+                    title={socketState === "connected" ? "Control connection online" : socketState === "connecting" ? "Control connection is reconnecting" : "Live updates offline"}
+                    aria-label={socketState === "connected" ? "Control connection online" : socketState === "connecting" ? "Control connection is reconnecting" : "Live updates offline"}
                 />
-                <span className="ui-manager-version" title={`UI revision ${__FSM_UI_REVISION__}`}>v{__FSM_UI_VERSION__}{revision}</span>
+                <span className="ui-manager-product" title="Factorio Server Control">Factorio Server Control</span>
+                <span className="ui-manager-version" title={`Factorio Server Control UI revision ${__FSM_UI_REVISION__}`}>v{__FSM_UI_VERSION__}{revision}</span>
             </div>
         </div>
     </>;
@@ -224,22 +252,27 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
             <button className="ui-mobile-menu" onClick={() => setIsNavOpen(true)} aria-label="Open navigation">
                 <FontAwesomeIcon icon={faBars}/>
             </button>
-            <div className="ui-brand-mark"><FontAwesomeIcon icon={faServer}/></div>
+            <BrandMark/>
             <div className="ui-mobile-brand-copy">
-                <strong>Factorio Server Manager</strong>
+                <strong>Factorio Server Control</strong>
                 <span>{activeProfile?.name || "Manager"}</span>
             </div>
         </header>
 
         {isNavOpen && <button className="ui-sidebar-scrim" onClick={() => setIsNavOpen(false)} aria-label="Close navigation overlay"/>}
-        <aside className={`ui-sidebar${isNavOpen ? " is-open" : ""}`} aria-label="Application navigation">
-            <SidebarContent/>
+        <aside
+            ref={sidebarRef}
+            className={`ui-sidebar${isNavOpen ? " is-open" : ""}`}
+            aria-label="Application navigation"
+            aria-hidden={isCompactNavigation && !isNavOpen ? "true" : undefined}
+        >
+            {sidebarContent}
         </aside>
 
         <main className="ui-main">
-            <ProfileContextBar serverStatus={serverStatus} refreshServerStatus={refreshServerStatus}/>
+            <ProfileContextBar serverStatus={serverStatus} refreshServerStatus={refreshServerStatus} canManage={canManage}/>
             <div className="ui-page">
-                <Outlet/>
+                <Outlet key={outletKey}/>
             </div>
         </main>
 

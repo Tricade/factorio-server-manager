@@ -13,6 +13,7 @@ import Button from "../components/Button";
 import Input from "../components/Input";
 import Select from "../components/Select";
 import Label from "../components/Label";
+import Error from "../components/Error";
 import Alert from "../components/Alert";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -25,7 +26,7 @@ const sourceOptions = [
 
 const profileError = (error, fallback) => error?.response?.data?.error || error?.response?.data || fallback;
 
-const Profiles = ({serverStatus, refreshServerStatus}) => {
+const Profiles = ({serverStatus, refreshServerStatus, canManage = false}) => {
     const {state, activeProfile, isLoading, applyProfileState, refreshProfiles} = useProfiles();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -38,16 +39,23 @@ const Profiles = ({serverStatus, refreshServerStatus}) => {
     const [savingEdit, setSavingEdit] = useState(false);
     const [deleting, setDeleting] = useState(null);
     const refreshOnMount = useRef(Boolean(state));
-    const {register, handleSubmit, reset, watch} = useForm({
+    const {register, handleSubmit, reset, watch, formState: {errors}} = useForm({
         defaultValues: {name: "", description: "", source: "empty"}
     });
-    const locked = Boolean(serverStatus?.running || serverStatus?.stopping);
+    const locked = Boolean(!canManage || serverStatus?.known === false || serverStatus?.running || serverStatus?.stopping);
     const profileUIBusy = locked || creating || isLoading || !activeProfile;
     const source = watch("source");
 
     useEffect(() => {
         if (refreshOnMount.current) refreshProfiles().catch(() => undefined);
     }, [refreshProfiles]);
+
+    useEffect(() => {
+        if (!requestedFreshProfile) return;
+        reset({name: "", description: "", source: "empty"});
+        setPendingProfile(null);
+        setShowCreate(true);
+    }, [requestedFreshProfile, reset]);
 
     const openCreate = () => {
         reset({name: "", description: "", source: "empty"});
@@ -108,6 +116,10 @@ const Profiles = ({serverStatus, refreshServerStatus}) => {
     const saveEdit = async event => {
         event.preventDefault();
         if (!editing) return;
+        if (!editing.name.trim()) {
+            window.flash("Profile name cannot be empty.", "red");
+            return;
+        }
         setSavingEdit(true);
         try {
             applyProfileState(await profilesResource.update(editing.id, {
@@ -134,13 +146,19 @@ const Profiles = ({serverStatus, refreshServerStatus}) => {
         <PageHeader
             title="Profiles"
             help="Profiles keep saves, versions, modes, mods and settings separate. Activating one snapshots the current setup and leaves Factorio stopped."
-            actions={<Button onClick={openCreate} isDisabled={profileUIBusy}>
+            actions={canManage ? <Button onClick={openCreate} isDisabled={profileUIBusy}>
                 <FontAwesomeIcon icon={faPlus}/> New profile
-            </Button>}
+            </Button> : null}
         />
 
-        {locked && <Alert type="warning" className="mb-5">
-            Save and stop Factorio before creating a snapshot or switching profiles.
+        {locked && <Alert type={canManage ? "warning" : "info"} className="mb-5">
+            {!canManage
+                ? "Viewer access is read-only. Profile details remain available, but profiles cannot be created, edited, deleted, or activated."
+                : serverStatus?.known === false
+                ? "Profile changes are locked until the Factorio process status is confirmed."
+                : serverStatus?.stopping
+                    ? "Profile changes remain locked while Factorio is shutting down."
+                    : "Save and stop Factorio before creating a snapshot or switching profiles."}
         </Alert>}
 
         {pendingProfile && <Panel
@@ -162,7 +180,7 @@ const Profiles = ({serverStatus, refreshServerStatus}) => {
             </>}
         />}
 
-        {showCreate && <Panel
+        {showCreate && canManage && <Panel
             title="Create profile"
             className="mb-5"
             content={<form id="create-profile-form" onSubmit={handleSubmit(create)} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -171,9 +189,14 @@ const Profiles = ({serverStatus, refreshServerStatus}) => {
                     <Input
                         id="profile-name"
                         disabled={profileUIBusy}
-                        register={register("name", {required: true, maxLength: 64})}
+                        register={register("name", {
+                            required: true,
+                            maxLength: 64,
+                            validate: value => Boolean(value.trim())
+                        })}
                         placeholder="Space Age megabase"
                     />
+                    <Error error={errors.name} message="Enter a profile name of up to 64 characters."/>
                 </div>
                 <div>
                     <Label text="Starting point" htmlFor="profile-source" help={source === "clone"
@@ -194,6 +217,7 @@ const Profiles = ({serverStatus, refreshServerStatus}) => {
                         register={register("description", {maxLength: 500})}
                         placeholder="Optional note"
                     />
+                    <Error error={errors.description} message="Keep the description to 500 characters or fewer."/>
                 </div>
             </form>}
             actions={<>
@@ -223,6 +247,7 @@ const Profiles = ({serverStatus, refreshServerStatus}) => {
                                         className="ui-input"
                                         value={editing.name}
                                         maxLength={64}
+                                        required
                                         autoFocus
                                         disabled={savingEdit}
                                         onChange={event => setEditing(current => ({...current, name: event.target.value}))}
@@ -274,7 +299,7 @@ const Profiles = ({serverStatus, refreshServerStatus}) => {
                                     >
                                         Save: {profile.selected_save}
                                     </p>}
-                                    <div className="ui-profile-card__actions">
+                                    {canManage && <div className="ui-profile-card__actions">
                                         <Button size="sm" type="ghost" isDisabled={Boolean(activating)} onClick={() => beginEdit(profile)}>
                                             <FontAwesomeIcon icon={faPen}/> Edit
                                         </Button>
@@ -295,7 +320,7 @@ const Profiles = ({serverStatus, refreshServerStatus}) => {
                                         >
                                             <FontAwesomeIcon icon={faPlay}/> Activate
                                         </Button>}
-                                    </div>
+                                    </div>}
                                 </>}
                             </article>;
                         })}

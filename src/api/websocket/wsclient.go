@@ -39,6 +39,11 @@ type wsClient struct {
 
 	// channel to send messages to the websocket connection.
 	send chan wsMessage
+
+	// Authorization is re-evaluated for every RCON command so deleting or
+	// downgrading an account (or changing its password) revokes an existing
+	// socket without waiting for disconnect.
+	allowCommands func() bool
 }
 
 // read messages from the websocket connection, choose what has to be done with it and execute that action
@@ -79,25 +84,46 @@ func (client *wsClient) readPump() {
 				// this message is a control message, do its job!
 				switch message.Controls.Type {
 				case "subscribe":
+					if !client.maySubscribeRoom(message.Controls.Value) {
+						continue
+					}
 					room := client.hub.GetRoom(message.Controls.Value)
 					room.register <- client
 				case "unsubscribe":
+					if !clientRoomAllowed(message.Controls.Value) {
+						continue
+					}
 					room := client.hub.GetRoom(message.Controls.Value)
 					room.unregister <- client
-				default:
-					for _, handler := range client.hub.controlHandlers {
-						go handler(message.Controls)
+				case "command":
+					if client.mayDispatchControl(message.Controls) {
+						client.hub.dispatchControl(message.Controls)
 					}
 				}
-			} else {
-				client.hub.broadcast <- message
 			}
-		} else {
-			// Send the message to the defined room
-			room := client.hub.GetRoom(message.RoomName)
-			room.send <- message
 		}
 	}
+}
+
+func (client *wsClient) mayDispatchControl(controls WsControls) bool {
+	return controls.Type != "command" || (client.allowCommands != nil && client.allowCommands())
+}
+
+func clientRoomAllowed(name string) bool {
+	return name == "gamelog" || name == "server_status"
+}
+
+// Server status is operational read-only data. The live game log also carries
+// RCON responses, so it must use the same dynamically re-evaluated
+// administrator capability as command dispatch.
+func (client *wsClient) maySubscribeRoom(name string) bool {
+	if !clientRoomAllowed(name) {
+		return false
+	}
+	if name == "server_status" {
+		return true
+	}
+	return client.allowCommands != nil && client.allowCommands()
 }
 
 // write message to the websocket connection.
@@ -147,7 +173,7 @@ func (client *wsClient) writePump() {
 
 // serveWs is the http handler to upgrade from http to ws..
 // Also the startup point for a client
-func ServeWs(w http.ResponseWriter, r *http.Request) {
+func ServeWs(w http.ResponseWriter, r *http.Request, allowCommands func() bool) {
 	// upgrade the connection
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -157,9 +183,10 @@ func ServeWs(w http.ResponseWriter, r *http.Request) {
 
 	// setup the client
 	client := &wsClient{
-		hub:  WebsocketHub,
-		conn: conn,
-		send: make(chan wsMessage, 256),
+		hub:           WebsocketHub,
+		conn:          conn,
+		send:          make(chan wsMessage, 256),
+		allowCommands: allowCommands,
 	}
 
 	// register this client in the hub

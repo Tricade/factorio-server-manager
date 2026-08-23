@@ -1,7 +1,5 @@
 import React, {useCallback, useEffect, useState} from "react";
 import {BrowserRouter, Navigate, Outlet, Route, Routes} from "react-router-dom";
-import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faGear} from "@fortawesome/free-solid-svg-icons";
 import user from "../api/resources/user";
 import server from "../api/resources/server";
 import socket from "../api/socket";
@@ -19,11 +17,13 @@ import Releases from "./views/Releases";
 import Profiles from "./views/Profiles";
 import {Flash} from "./components/Flash";
 import {ProfileProvider} from "./context/ProfileContext";
+import BrandMark from "./components/BrandMark";
+import {authenticationRequiredEvent} from "../api/client";
 
 const AppLoader = () => <div className="ui-login-shell">
     <div className="text-center">
-        <div className="ui-brand-mark mx-auto mb-4"><FontAwesomeIcon icon={faGear} spin/></div>
-        <p className="font-bold">Connecting to server manager</p>
+        <BrandMark className="mx-auto mb-4" isLoading/>
+        <p className="font-bold">Connecting to Factorio Server Control</p>
     </div>
 </div>;
 
@@ -33,14 +33,22 @@ const ProtectedRoute = ({authState}) => {
     return <Outlet/>;
 };
 
+const normalizeServerStatus = status => {
+    if (!status || typeof status !== "object" || typeof status.running !== "boolean" || typeof status.stopping !== "boolean") {
+        throw new Error("The server status endpoint returned an invalid response.");
+    }
+    return {...status, known: true};
+};
+
 const App = () => {
     const [authState, setAuthState] = useState("checking");
     const [currentUser, setCurrentUser] = useState(null);
-    const [serverStatus, setServerStatus] = useState({running: false, stopping: false});
+    const [serverStatus, setServerStatus] = useState({running: false, stopping: false, known: false});
     const [socketState, setSocketState] = useState("disconnected");
+    const canManage = currentUser?.role === "admin";
 
     const refreshServerStatus = useCallback(async () => {
-        const currentServerStatus = await server.status();
+        const currentServerStatus = normalizeServerStatus(await server.status());
         setServerStatus(currentServerStatus);
         return currentServerStatus;
     }, []);
@@ -54,6 +62,17 @@ const App = () => {
             window.flash("Logged in, but the server status could not be loaded.", "red");
         }
     }, [refreshServerStatus]);
+
+    useEffect(() => {
+        const requireAuthentication = () => {
+            socket.disconnect();
+            setCurrentUser(null);
+            setAuthState("anonymous");
+            setServerStatus({running: false, stopping: false, known: false});
+        };
+        window.addEventListener(authenticationRequiredEvent, requireAuthentication);
+        return () => window.removeEventListener(authenticationRequiredEvent, requireAuthentication);
+    }, []);
 
     useEffect(() => {
         let active = true;
@@ -71,7 +90,8 @@ const App = () => {
 
         const receiveStatus = status => {
             try {
-                setServerStatus(typeof status === "string" ? JSON.parse(status) : status);
+                const parsedStatus = typeof status === "string" ? JSON.parse(status) : status;
+                setServerStatus(normalizeServerStatus(parsedStatus));
             } catch (error) {
                 window.flash("Received an invalid server status update.", "red");
             }
@@ -97,7 +117,7 @@ const App = () => {
             socket.disconnect();
             setCurrentUser(null);
             setAuthState("anonymous");
-            setServerStatus({running: false, stopping: false});
+            setServerStatus({running: false, stopping: false, known: false});
         }
     }, []);
 
@@ -109,17 +129,17 @@ const App = () => {
                     : <Login handleLogin={handleAuthenticated} isChecking={authState === "checking"}/>
             }/>
             <Route element={<ProtectedRoute authState={authState}/> }>
-                <Route element={<ProfileProvider><Layout handleLogout={handleLogout} serverStatus={serverStatus} refreshServerStatus={refreshServerStatus} currentUser={currentUser} socketState={socketState}/></ProfileProvider>}>
-                    <Route index element={<Controls serverStatus={serverStatus} refreshServerStatus={refreshServerStatus}/>}/>
-                    <Route path="saves" element={<Saves serverStatus={serverStatus}/>}/>
-                    <Route path="mods" element={<Mods serverStatus={serverStatus}/>}/>
-                    <Route path="server-settings" element={<ServerSettings serverStatus={serverStatus}/>}/>
+                <Route element={<ProfileProvider><Layout handleLogout={handleLogout} serverStatus={serverStatus} refreshServerStatus={refreshServerStatus} currentUser={currentUser} socketState={socketState} canManage={canManage}/></ProfileProvider>}>
+                    <Route index element={<Controls serverStatus={serverStatus} refreshServerStatus={refreshServerStatus} canManage={canManage}/>}/>
+                    <Route path="saves" element={<Saves serverStatus={serverStatus} canManage={canManage}/>}/>
+                    <Route path="mods" element={<Mods serverStatus={serverStatus} canManage={canManage}/>}/>
+                    <Route path="server-settings" element={<ServerSettings serverStatus={serverStatus} canManage={canManage}/>}/>
                     <Route path="game-settings" element={<GameSettings serverStatus={serverStatus}/>}/>
-                    <Route path="console" element={<Console serverStatus={serverStatus} socketState={socketState}/>}/>
+                    <Route path="console" element={canManage ? <Console serverStatus={serverStatus} socketState={socketState}/> : <Navigate to="/" replace/>}/>
                     <Route path="logs" element={<Logs/>}/>
-                    <Route path="releases" element={<Releases serverStatus={serverStatus} refreshServerStatus={refreshServerStatus}/>}/>
-                    <Route path="profiles" element={<Profiles serverStatus={serverStatus} refreshServerStatus={refreshServerStatus}/>}/>
-                    <Route path="user-management" element={<UserManagement currentUser={currentUser}/>}/>
+                    <Route path="releases" element={<Releases serverStatus={serverStatus} refreshServerStatus={refreshServerStatus} canManage={canManage}/>}/>
+                    <Route path="profiles" element={<Profiles serverStatus={serverStatus} refreshServerStatus={refreshServerStatus} canManage={canManage}/>}/>
+                    <Route path="user-management" element={<UserManagement currentUser={currentUser} canManage={canManage}/>}/>
                 </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace/>}/>

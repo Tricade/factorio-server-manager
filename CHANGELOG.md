@@ -3,14 +3,46 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.16.0] - 2026-08-23
+
+### Highlights
+- Prepared the maintained fork for a distinct `Factorio Server Control` public identity and a safer Community Applications deployment without renaming compatibility-sensitive storage or image identifiers.
+- Added a player overview and optional detailed building geometry to factory-map snapshots while retaining the existing isolated, non-destructive snapshot model.
 
 ### Added
 - Added the repository profile, canonical Docker template, project icon and automated structural checks required for an Unraid Community Applications submission.
+- Added a release checklist and user-oriented GitHub notes template covering highlights, behavior changes, security, compatibility, migration, upgrade and rollback.
+- Added checksummed, versioned release archives, container provenance/SBOM generation and license/document inclusion in distributed artifacts.
+- Added live connected-player state, snapshot-derived playtime ranking and bounded per-surface entity-detail exports for factory maps.
 
 ### Changed
 - Organized every default Unraid host path below `/mnt/user/appdata/factorio-server-manager/` with dedicated `data`, `saves`, `mods` and `config` subdirectories while preserving non-overlapping container mounts.
-- Distinguished the Community Applications entry from the existing legacy upstream listing with the `FactorioServerManager-Tricade` template name and explicit modern-fork attribution.
+- Renamed the maintained fork's public product identity to `Factorio Server Control`, while retaining stable repository, image, path and environment identifiers and explicit attribution to the original Factorio Server Manager project.
+- Container shutdown now reserves a three-minute grace period and asks a running Factorio process to save and stop cleanly before the manager exits.
+- Release and container helpers now build current frontend assets themselves, attach accurate source/version metadata and reserve `latest` plus immutable SemVer tags for the GitHub release workflow.
+- Profile-aware UI state now resets across profile changes, mutating controls fail safe during unknown/running/stopping states, and map/mod/settings/user workflows expose clearer loading, empty, error and validation feedback.
+- Factory maps now provide keyboard-operable zoom/pan, a focus-safe lightbox and a lazy Canvas building overlay without preventing legacy snapshots from displaying their base image.
+- Modals, tabs and mobile navigation now manage focus, Escape handling, keyboard interaction and scroll locking consistently.
+- Public documentation now states the manager's local-data and outbound-service privacy boundary, and README/Community Applications screenshot references use the available 16:9 captures instead of the portrait legacy controls image.
+
+### Fixed
+- Fixed direct HTTP login in the Unraid and registry examples by making the session-cookie security mode explicit, while retaining secure cookies for the HTTPS/Traefik example.
+- Fixed the local Docker build context and release ZIP asset selection so the current manager binary, license, documentation, favicons and nested UI images are included.
+- Fixed malformed native configuration handling so invalid JSON is rejected without being overwritten and generated secrets are stored with restrictive permissions.
+- Fixed post-activation Factorio update failures so binary validation or runtime-state persistence can restore the prior program tree instead of leaving version metadata and files out of sync.
+- Fixed checkpoint player counting, RCON serialization and WebSocket shutdown races; save/checkpoint archives now validate and activate atomically with bounded mod ZIP processing.
+
+### Security
+- Empty example RCON credentials now generate a random persisted localhost-only password instead of encouraging a reusable placeholder.
+- The production entrypoint refuses disposable manager/game-data layouts, validates exact restored Factorio versions and stages the program tree before making its executable available.
+- GitHub Actions and Docker base images are pinned to reviewed immutable revisions; the release toolchain now requires patched Go 1.25.14 plus `govulncheck`, and release images publish provenance and an SBOM.
+- Stable publication now starts only from an existing verified SemVer tag, refuses existing release/image targets or moved tags, verifies archives and the immutable image before creating a hidden draft, and exposes the GitHub release only as the final mutation.
+- Detailed map exports enforce authenticated access plus symlink, path, geometry, line, file and entity-count bounds before data reaches the browser.
+- Replaced state-changing GET routes, made mutations and RCON-console access administrator-only by default, added a read-only viewer role, bounded login attempts/sessions and applied strict request/error and browser security-header handling.
+
+### Compatibility and migration
+- Retained the technical `factorio-server-manager` repository/image/executable namespace and default Unraid appdata root, plus `/opt/fsm-data`, `/opt/factorio`, the upstream Go module path and existing `FSM_*` environment names, so stopped original-manager data can be copied into the documented persistent mappings without a branding-only rename or conversion.
+- Clarified that split-mount container recreation downloads the exact recorded official Factorio version again, while a combined `/opt/factorio` mount retains the installed program tree.
 
 ## [0.15.1] - 2026-08-22
 

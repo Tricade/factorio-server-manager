@@ -19,12 +19,16 @@ func TestMapSnapshotHandlers(t *testing.T) {
 	originalTrigger := triggerMapSnapshot
 	originalSet := setMapSnapshotSettings
 	originalRead := readMapSnapshotImage
+	originalReadEntities := readMapSnapshotEntities
 	generatedAt := time.Date(2026, 8, 22, 14, 0, 0, 0, time.UTC)
 	state := factorio.MapSnapshotState{
 		Settings: factorio.MapSnapshotSettings{IntervalMinutes: 60},
 		Snapshot: &factorio.MapSnapshot{
 			SchemaVersion: 1, ProfileID: "0123456789abcdef", GeneratedAt: generatedAt,
-			Surfaces: []factorio.MapSnapshotSurface{{ID: "1", Index: 1, Name: "nauvis", Width: 32, Height: 32}},
+			Surfaces: []factorio.MapSnapshotSurface{{
+				ID: "1", Index: 1, Name: "nauvis", ChunkCount: 1, Width: 32, Height: 32,
+				ViewBoundsAvailable: true, ViewMinTileX: 0, ViewMinTileY: 0, ViewMaxTileX: 31, ViewMaxTileY: 31, PixelsPerTile: 1,
+			}},
 		},
 	}
 	getMapSnapshotState = func() (factorio.MapSnapshotState, error) { return state, nil }
@@ -42,11 +46,18 @@ func TestMapSnapshotHandlers(t *testing.T) {
 		}
 		return []byte("png"), generatedAt, nil
 	}
+	readMapSnapshotEntities = func(surface string) ([]byte, time.Time, error) {
+		if surface != "1" {
+			return nil, time.Time{}, factorio.ErrMapSnapshotSurfaceNotFound
+		}
+		return []byte("{\"name\":\"assembling-machine-3\"}\n"), generatedAt, nil
+	}
 	t.Cleanup(func() {
 		getMapSnapshotState = originalGet
 		triggerMapSnapshot = originalTrigger
 		setMapSnapshotSettings = originalSet
 		readMapSnapshotImage = originalRead
+		readMapSnapshotEntities = originalReadEntities
 	})
 
 	getRecorder := httptest.NewRecorder()
@@ -54,6 +65,8 @@ func TestMapSnapshotHandlers(t *testing.T) {
 	require.Equal(t, http.StatusOK, getRecorder.Code)
 	assert.Equal(t, "no-store", getRecorder.Header().Get("Cache-Control"))
 	assert.Contains(t, getRecorder.Body.String(), `"interval_minutes":60`)
+	assert.Contains(t, getRecorder.Body.String(), `"view_bounds_available":true`)
+	assert.Contains(t, getRecorder.Body.String(), `"pixels_per_tile":1`)
 
 	refreshRecorder := httptest.NewRecorder()
 	RefreshMapSnapshot(refreshRecorder, httptest.NewRequest(http.MethodPost, "/api/map-snapshot/refresh", nil))
@@ -71,16 +84,25 @@ func TestMapSnapshotHandlers(t *testing.T) {
 	require.Equal(t, http.StatusOK, imageRecorder.Code)
 	assert.Equal(t, "image/png", imageRecorder.Header().Get("Content-Type"))
 	assert.Equal(t, "png", imageRecorder.Body.String())
+
+	entitiesRecorder := httptest.NewRecorder()
+	entitiesRequest := mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/api/map-snapshot/surfaces/1/entities", nil), map[string]string{"surface": "1"})
+	GetMapSnapshotEntities(entitiesRecorder, entitiesRequest)
+	require.Equal(t, http.StatusOK, entitiesRecorder.Code)
+	assert.Equal(t, "application/x-ndjson", entitiesRecorder.Header().Get("Content-Type"))
+	assert.Contains(t, entitiesRecorder.Body.String(), "assembling-machine-3")
 }
 
 func TestMapSnapshotHandlersValidateRequestsAndErrors(t *testing.T) {
 	originalTrigger := triggerMapSnapshot
 	originalSet := setMapSnapshotSettings
 	originalRead := readMapSnapshotImage
+	originalReadEntities := readMapSnapshotEntities
 	t.Cleanup(func() {
 		triggerMapSnapshot = originalTrigger
 		setMapSnapshotSettings = originalSet
 		readMapSnapshotImage = originalRead
+		readMapSnapshotEntities = originalReadEntities
 	})
 
 	invalidRecorder := httptest.NewRecorder()
@@ -108,4 +130,12 @@ func TestMapSnapshotHandlersValidateRequestsAndErrors(t *testing.T) {
 	imageRequest := mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/api/map-snapshot/surfaces/1", nil), map[string]string{"surface": "1"})
 	GetMapSnapshotImage(imageRecorder, imageRequest)
 	assert.Equal(t, http.StatusInternalServerError, imageRecorder.Code)
+
+	readMapSnapshotEntities = func(string) ([]byte, time.Time, error) {
+		return nil, time.Time{}, factorio.ErrMapSnapshotDetailsNotFound
+	}
+	entitiesRecorder := httptest.NewRecorder()
+	entitiesRequest := mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/api/map-snapshot/surfaces/1/entities", nil), map[string]string{"surface": "1"})
+	GetMapSnapshotEntities(entitiesRecorder, entitiesRequest)
+	assert.Equal(t, http.StatusNotFound, entitiesRecorder.Code)
 }

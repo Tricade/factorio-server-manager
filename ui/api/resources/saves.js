@@ -10,11 +10,11 @@ export default {
         return response.data;
     },
     delete: async (save) => {
-        const response = await client.get(`/api/saves/rm/${save.name}`);
+        const response = await client.delete(`/api/saves/rm/${encodeURIComponent(save.name)}`);
         return response.data;
     },
     create: async (name) => {
-        const response = await client.get(`/api/saves/create/${name}`);
+        const response = await client.post(`/api/saves/create/${encodeURIComponent(name)}`);
         return response.data;
     },
     generation: {

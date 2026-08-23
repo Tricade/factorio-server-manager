@@ -9,6 +9,13 @@ import (
 	"github.com/gorilla/mux"
 )
 
+const maximumPortalBatchInstallItems = 128
+
+var loadModPortalAuthenticationStatus = func() (bool, error) {
+	var credentials factorio.Credentials
+	return credentials.Load()
+}
+
 func ModPortalListModsHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var resp interface{}
@@ -169,22 +176,20 @@ func ModPortalLoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ModPortalLoginStatusHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
 	var resp interface{}
 
 	defer func() {
 		WriteResponse(w, resp)
 	}()
 
-	var credentials factorio.Credentials
-	resp, err = credentials.Load()
-
+	authenticated, err := loadModPortalAuthenticationStatus()
 	if err != nil {
-		resp = fmt.Sprintf("Error getting the factorio credentials: %s", err)
-		log.Println(resp)
+		log.Printf("Error getting Factorio credential status: %s", err)
+		resp = "Unable to read Factorio mod portal login status"
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	resp = authenticated
 }
 
 func ModPortalLogoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -224,6 +229,11 @@ func ModPortalInstallMultipleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err = ReadFromRequestBody(w, r, &data)
 	if err != nil {
+		return
+	}
+	if len(data) > maximumPortalBatchInstallItems {
+		resp = fmt.Sprintf("At most %d mods can be installed in one request", maximumPortalBatchInstallItems)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 

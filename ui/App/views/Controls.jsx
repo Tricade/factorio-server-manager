@@ -13,10 +13,10 @@ import Alert from "../components/Alert";
 import EmptyState from "../components/EmptyState";
 import ScopeBadge from "../components/ScopeBadge";
 import Button from "../components/Button";
-import MapImageViewer, {MapImageLightbox} from "../components/MapImageViewer";
+import MapImageViewer, {entityDetailZoom, MapImageLightbox} from "../components/MapImageViewer";
+import PlayerOverviewPanel from "../components/PlayerOverviewPanel";
 import {useProfiles} from "../context/ProfileContext";
 
-const modeLabel = mode => mode === "space-age" ? "Space Age" : mode === "factorio" ? "Factorio" : "Custom";
 const targetLabel = target => target === "latest" ? "Experimental / latest" : target === "stable" ? "Stable" : target || "Pinned";
 
 const formatSize = bytes => {
@@ -31,23 +31,33 @@ const formatDate = value => {
     return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
 };
 
-const Controls = ({serverStatus}) => {
+const Controls = ({serverStatus, canManage = false}) => {
     const {activeProfile} = useProfiles();
     const [saves, setSaves] = useState([]);
     const [checkpointState, setCheckpointState] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [saveLoadError, setSaveLoadError] = useState("");
+    const [checkpointLoadError, setCheckpointLoadError] = useState("");
+    const [overviewReloadToken, setOverviewReloadToken] = useState(0);
     const [mapState, setMapState] = useState(null);
+    const [mapLoadError, setMapLoadError] = useState("");
     const [selectedSurface, setSelectedSurface] = useState("");
     const [isLoadingMap, setIsLoadingMap] = useState(true);
     const [isMapLightboxOpen, setIsMapLightboxOpen] = useState(false);
     const [mapView, setMapView] = useState({zoom: 1, x: 0, y: 0});
+    const [mapEntities, setMapEntities] = useState(null);
+    const [isLoadingMapEntities, setIsLoadingMapEntities] = useState(false);
+    const [mapEntityError, setMapEntityError] = useState("");
+    const [mapEntityReloadToken, setMapEntityReloadToken] = useState(0);
 
     const loadMapSnapshot = useCallback(async (showError = false) => {
         try {
             const state = await serverResource.mapSnapshot();
             setMapState(state);
+            setMapLoadError("");
             return state;
         } catch (error) {
+            setMapLoadError("Map snapshot status could not be loaded.");
             if (showError) window.flash(error?.response?.data || "Map snapshot could not be loaded.", "red");
             return null;
         } finally {
@@ -58,16 +68,26 @@ const Controls = ({serverStatus}) => {
     useEffect(() => {
         let active = true;
         setIsLoading(true);
+        setSaveLoadError("");
+        setCheckpointLoadError("");
         Promise.allSettled([
             savesResource.list(false),
             savesResource.checkpoints.list()
         ]).then(([saveResult, checkpointResult]) => {
             if (!active) return;
-            setSaves(saveResult.status === "fulfilled" ? saveResult.value || [] : []);
-            setCheckpointState(checkpointResult.status === "fulfilled" ? checkpointResult.value : null);
+            if (saveResult.status === "fulfilled") setSaves(saveResult.value || []);
+            else {
+                setSaves([]);
+                setSaveLoadError("Save data could not be loaded.");
+            }
+            if (checkpointResult.status === "fulfilled") setCheckpointState(checkpointResult.value);
+            else {
+                setCheckpointState(null);
+                setCheckpointLoadError("Checkpoint data could not be loaded.");
+            }
         }).finally(() => active && setIsLoading(false));
         return () => { active = false; };
-    }, [activeProfile?.id, activeProfile?.selected_save, serverStatus?.savefile]);
+    }, [activeProfile?.id, activeProfile?.selected_save, serverStatus?.savefile, overviewReloadToken]);
 
     useEffect(() => {
         setIsLoadingMap(true);
@@ -94,6 +114,46 @@ const Controls = ({serverStatus}) => {
         setIsMapLightboxOpen(false);
     }, [mapState?.snapshot?.generated_at, selectedSurface]);
 
+    const mapSnapshot = mapState?.snapshot || null;
+    const mapSurfaces = mapSnapshot?.surfaces || [];
+    const activeSurface = mapSurfaces.find(surface => surface.id === selectedSurface) || mapSurfaces[0] || null;
+    const shouldLoadMapEntities = mapView.zoom >= entityDetailZoom;
+
+    useEffect(() => {
+        setMapEntities(null);
+        setMapEntityError("");
+        setIsLoadingMapEntities(false);
+    }, [activeSurface?.entities_available, activeSurface?.id, activeSurface?.view_bounds_available, mapEntityReloadToken, mapSnapshot?.generated_at]);
+
+    useEffect(() => {
+        if (!shouldLoadMapEntities || mapEntities !== null || mapEntityError) return undefined;
+        if (!activeSurface?.entities_available || activeSurface?.view_bounds_available !== true || !mapSnapshot?.generated_at) {
+            setIsLoadingMapEntities(false);
+            return undefined;
+        }
+        const controller = new AbortController();
+        let active = true;
+        setIsLoadingMapEntities(true);
+        serverResource.mapSnapshotEntities(activeSurface.id, mapSnapshot.generated_at, controller.signal)
+            .then(entities => {
+                if (!active) return;
+                if (entities.length !== Number(activeSurface.entity_count)) {
+                    throw new Error("The map entity endpoint returned an incomplete dataset.");
+                }
+                setMapEntities(entities);
+            })
+            .catch(error => {
+                if (active && error?.name !== "AbortError") setMapEntityError("Building detail could not be loaded. The map image remains available.");
+            })
+            .finally(() => {
+                if (active) setIsLoadingMapEntities(false);
+            });
+        return () => {
+            active = false;
+            controller.abort();
+        };
+    }, [activeSurface?.entities_available, activeSurface?.entity_count, activeSurface?.id, activeSurface?.view_bounds_available, mapEntities, mapEntityError, mapEntityReloadToken, mapSnapshot?.generated_at, shouldLoadMapEntities]);
+
     const sortedSaves = useMemo(() => [...saves].sort((left, right) => new Date(right.last_mod) - new Date(left.last_mod)), [saves]);
     const selectedName = serverStatus?.running ? serverStatus?.savefile : activeProfile?.selected_save;
     const activeSave = sortedSaves.find(save => save.name === selectedName)
@@ -103,13 +163,16 @@ const Controls = ({serverStatus}) => {
         || null;
     const checkpoints = checkpointState?.checkpoints || [];
     const latestCheckpoint = [...checkpoints].sort((left, right) => new Date(right.created_at) - new Date(left.created_at))[0] || null;
-    const mapSnapshot = mapState?.snapshot || null;
-    const mapSurfaces = mapSnapshot?.surfaces || [];
-    const activeSurface = mapSurfaces.find(surface => surface.id === selectedSurface) || mapSurfaces[0] || null;
     const mapImageURL = activeSurface && mapSnapshot
         ? `/api/map-snapshot/surfaces/${encodeURIComponent(activeSurface.id)}?v=${encodeURIComponent(mapSnapshot.generated_at)}`
         : "";
     const mapImageAlt = activeSurface && mapSnapshot ? `${activeSurface.name} map from ${mapSnapshot.save_name}` : "Factory map";
+    const mapEntityOverlay = activeSurface ? {
+        entities: mapEntities,
+        error: mapEntityError,
+        isLoading: isLoadingMapEntities,
+        surface: activeSurface
+    } : null;
 
     const refreshMapSnapshot = async () => {
         try {
@@ -136,8 +199,11 @@ const Controls = ({serverStatus}) => {
                 headerAction={<ScopeBadge/>}
                 content={isLoading
                     ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faHardDrive} spin/><p className="mt-3">Reading save data…</p></div></div>
+                    : saveLoadError
+                        ? <Alert type="danger"><div className="flex flex-wrap items-center gap-3"><span>{saveLoadError}</span><Button type="secondary" size="sm" onClick={() => setOverviewReloadToken(token => token + 1)}>Retry</Button></div></Alert>
                     : activeSave
                         ? <div className="ui-world-snapshot__content">
+                            {checkpointLoadError && <Alert type="warning" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{checkpointLoadError}</span><Button type="secondary" size="sm" onClick={() => setOverviewReloadToken(token => token + 1)}>Retry</Button></div></Alert>}
                             <div className="ui-world-snapshot__identity">
                                 <div className="ui-world-snapshot__icon"><FontAwesomeIcon icon={faFloppyDisk}/></div>
                                 <div>
@@ -150,10 +216,13 @@ const Controls = ({serverStatus}) => {
                                 <div className="ui-fact"><span>File size</span><strong>{formatSize(activeSave.size)}</strong></div>
                                 <div className="ui-fact"><span>Stored saves</span><strong>{activeProfile?.save_count ?? sortedSaves.length}</strong></div>
                                 <div className="ui-fact"><span>Installed mods</span><strong>{activeProfile?.mod_count ?? "—"}</strong></div>
-                                <div className="ui-fact"><span>Fixed checkpoints</span><strong>{checkpoints.length}</strong></div>
+                                <div className="ui-fact"><span>Fixed checkpoints</span><strong>{checkpointLoadError ? "Unavailable" : checkpoints.length}</strong></div>
                             </div>
                         </div>
-                        : <EmptyState icon={faHardDrive} title="No world in this profile"/>}
+                        : <>
+                            {checkpointLoadError && <Alert type="warning" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{checkpointLoadError}</span><Button type="secondary" size="sm" onClick={() => setOverviewReloadToken(token => token + 1)}>Retry</Button></div></Alert>}
+                            <EmptyState icon={faHardDrive} title="No world in this profile"/>
+                        </>}
                 actions={<>
                     <Link className="ui-button ui-button--secondary ui-button--sm" to="/saves"><FontAwesomeIcon icon={faFloppyDisk}/> Saves & checkpoints</Link>
                     {activeSave && <a className="ui-button ui-button--secondary ui-button--sm" href={`/api/saves/dl/${encodeURIComponent(activeSave.name)}`}><FontAwesomeIcon icon={faHardDrive}/> Download save</a>}
@@ -164,12 +233,9 @@ const Controls = ({serverStatus}) => {
                 title="Profile runtime"
                 headerAction={<ScopeBadge/>}
                 content={<div className="ui-kv-list">
-                    <div><span>Profile</span><strong>{activeProfile?.name || "Unavailable"}</strong></div>
-                    <div><span>Factorio</span><strong>{activeProfile?.installed_version || serverStatus?.fac_version || "Unknown"}</strong></div>
                     <div><span>Release target</span><strong>{targetLabel(activeProfile?.release_target)}</strong></div>
-                    <div><span>Game mode</span><strong>{modeLabel(activeProfile?.game_mode)}</strong></div>
                     <div><span>Game endpoint</span><strong>{activeProfile?.bind_ip || "0.0.0.0"}:{activeProfile?.port || 34197} / UDP</strong></div>
-                    <div><span>Latest checkpoint</span><strong>{latestCheckpoint ? formatDate(latestCheckpoint.created_at) : "None"}</strong></div>
+                    <div><span>Latest checkpoint</span><strong>{checkpointLoadError ? "Unavailable" : latestCheckpoint ? formatDate(latestCheckpoint.created_at) : "None"}</strong></div>
                 </div>}
                 actions={<>
                     <Link className="ui-button ui-button--secondary ui-button--sm" to="/server-settings"><FontAwesomeIcon icon={faServer}/> Server configuration</Link>
@@ -177,6 +243,8 @@ const Controls = ({serverStatus}) => {
                 </>}
             />
         </div>
+
+        {activeProfile?.id && <PlayerOverviewPanel profileID={activeProfile.id} serverStatus={serverStatus}/>}
 
         <Panel
             className="ui-map-snapshot mt-5"
@@ -191,6 +259,7 @@ const Controls = ({serverStatus}) => {
             content={isLoadingMap
                 ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faMap} spin/><p className="mt-3">Loading map…</p></div></div>
                 : <>
+                    {mapLoadError && <Alert type="danger" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{mapLoadError}</span><Button type="secondary" size="sm" onClick={() => loadMapSnapshot(true)}>Retry</Button></div></Alert>}
                     {mapState?.last_error && <Alert type="warning" className="mb-4">{mapState.last_error}</Alert>}
                     {mapSnapshot && activeSurface
                         ? <div className="ui-map-snapshot__content">
@@ -205,14 +274,19 @@ const Controls = ({serverStatus}) => {
                                     <span><small>Snapshot</small><strong>{formatDate(mapSnapshot.generated_at)}</strong></span>
                                     <span><small>Source save</small><strong title={mapSnapshot.save_name}>{mapSnapshot.save_name}</strong></span>
                                     <span><small>Charted chunks</small><strong>{activeSurface.chunk_count.toLocaleString()}</strong></span>
+                                    <span><small>Building detail</small><strong>{activeSurface.view_bounds_available !== true || !activeSurface.entities_available
+                                        ? "Not available"
+                                        : isLoadingMapEntities ? "Loading…" : mapEntityError ? "Unavailable" : mapEntities === null ? "Zoom in to load" : `${mapEntities.length.toLocaleString()} footprints`}</strong></span>
                                 </div>
                             </div>
+                            {mapEntityError && <Alert type="warning" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{mapEntityError}</span><Button type="secondary" size="sm" onClick={() => setMapEntityReloadToken(token => token + 1)}>Retry detail</Button></div></Alert>}
                             <MapImageViewer
                                 src={mapImageURL}
                                 alt={mapImageAlt}
                                 view={mapView}
                                 setView={setMapView}
                                 isPixelated={activeSurface.kind === "platform"}
+                                entityOverlay={mapEntityOverlay}
                                 onFullscreen={() => setIsMapLightboxOpen(true)}
                             />
                             <MapImageLightbox
@@ -224,6 +298,7 @@ const Controls = ({serverStatus}) => {
                                 view={mapView}
                                 setView={setMapView}
                                 isPixelated={activeSurface.kind === "platform"}
+                                entityOverlay={mapEntityOverlay}
                             />
                         </div>
                         : <EmptyState
@@ -231,13 +306,13 @@ const Controls = ({serverStatus}) => {
                             title={mapState?.running ? "Generating first map snapshot" : activeSave ? "No map snapshot yet" : "No world to map"}
                         />}
                 </>}
-            actions={<Button
+            actions={canManage ? <Button
                 type="secondary"
                 size="sm"
                 isLoading={Boolean(mapState?.running)}
-                isDisabled={!activeSave || Boolean(mapState?.running)}
+                isDisabled={!activeSave || Boolean(mapLoadError) || Boolean(mapState?.running)}
                 onClick={refreshMapSnapshot}
-            ><FontAwesomeIcon icon={faArrowsRotate}/> Generate now</Button>}
+            ><FontAwesomeIcon icon={faArrowsRotate}/> Generate now</Button> : null}
         />
 
         <Panel
@@ -246,7 +321,7 @@ const Controls = ({serverStatus}) => {
             content={<div className="ui-operation-links">
                 <Link to="/mods"><FontAwesomeIcon icon={faPuzzlePiece}/><span><strong>Mods</strong><small>{activeProfile?.mod_count ?? "—"} installed</small></span></Link>
                 <Link to="/game-settings"><FontAwesomeIcon icon={faGamepad}/><span><strong>Game settings</strong><small>Runtime configuration</small></span></Link>
-                <Link to="/console"><FontAwesomeIcon icon={faTerminal}/><span><strong>Console</strong><small>Commands and live output</small></span></Link>
+                {canManage && <Link to="/console"><FontAwesomeIcon icon={faTerminal}/><span><strong>Console</strong><small>Commands and live output</small></span></Link>}
                 <Link to="/logs"><FontAwesomeIcon icon={faFileLines}/><span><strong>Logs</strong><small>Recent Factorio output</small></span></Link>
                 <Link to="/profiles"><FontAwesomeIcon icon={faLayerGroup}/><span><strong>Profiles</strong><small>Switch saved setups</small></span></Link>
             </div>}

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -23,28 +24,50 @@ type LoginSuccessResponse struct {
 }
 
 func DeleteAllMods() error {
-	var err error
 	config := bootstrap.GetConfig()
-	modsDirInfo, err := os.Stat(config.FactorioModsDir)
+	serverLifecycleMutex.Lock()
+	defer serverLifecycleMutex.Unlock()
+	if GetFactorioServer().IsBusy() {
+		return ErrServerActive
+	}
+	return replaceActiveModsWithEmptyDirectory(config.FactorioModsDir)
+}
+
+// replaceActiveModsWithEmptyDirectory prepares a valid base-only mods
+// directory before renaming the current directory aside. Activation failure
+// restores the original directory wholesale instead of leaving a deleted or
+// half-recreated active state.
+func replaceActiveModsWithEmptyDirectory(destination string) error {
+	modsDirInfo, err := os.Stat(destination)
 	if err != nil {
 		log.Printf("error getting stats of FactorioModsDir: %s", err)
 		return err
 	}
 
 	modsDirPerm := modsDirInfo.Mode().Perm()
-
-	err = os.RemoveAll(config.FactorioModsDir)
+	parent := filepath.Dir(destination)
+	staging, err := os.MkdirTemp(parent, ".mods-empty-staging-")
 	if err != nil {
-		log.Printf("removing FactorioModsDir failed: %s", err)
-		return err
+		return fmt.Errorf("stage empty mods directory: %w", err)
 	}
-
-	err = os.Mkdir(config.FactorioModsDir, modsDirPerm)
-	if err != nil {
-		log.Printf("error recreating modPackDir: %s", err)
-		return err
+	swap := &modPackDirectorySwap{
+		destination: destination,
+		staging:     staging,
+		backup:      staging + ".previous",
 	}
-
+	defer swap.cleanup()
+	if err := os.Chmod(staging, modsDirPerm); err != nil {
+		return fmt.Errorf("set staged mods permissions: %w", err)
+	}
+	if _, err := NewMods(staging); err != nil {
+		return fmt.Errorf("initialize staged mods directory: %w", err)
+	}
+	if err := swap.activate(); err != nil {
+		return fmt.Errorf("activate empty mods directory: %w", err)
+	}
+	if err := swap.commit(); err != nil {
+		log.Printf("Empty mods directory is active but previous-directory cleanup failed: %v", err)
+	}
 	return nil
 }
 
@@ -74,7 +97,13 @@ func ModStartUp() {
 	if _, err := os.Stat(filepath.Join(oldModpackDir)); !os.IsNotExist(err) {
 		log.Printf("found old modpack files, rebuild into new system...")
 
-		err = filepath.Walk(oldModpackDir, func(path string, info os.FileInfo, err error) error {
+		err = filepath.Walk(oldModpackDir, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if info == nil {
+				return nil
+			}
 			if info.IsDir() {
 				return nil
 			}
