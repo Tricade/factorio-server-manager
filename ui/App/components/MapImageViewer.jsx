@@ -3,12 +3,14 @@ import * as ReactDom from "react-dom";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {faExpand, faMagnifyingGlassMinus, faMagnifyingGlassPlus, faRotateLeft, faXmark} from "@fortawesome/free-solid-svg-icons";
 import {focusableElements, lockBodyScroll, trapFocus} from "./overlay";
+import mapOverlayGeometryHelpers from "./mapOverlayGeometry.cjs";
+
+const {mapOverlayGeometry} = mapOverlayGeometryHelpers;
 
 const modalRoot = document.getElementById("modal-root");
 const minimumZoom = 1;
 const maximumZoom = 12;
 export const entityDetailZoom = 1.5;
-const maximumOverlayDimension = 2048;
 
 const entityCategories = [
     {id: "production", label: "Production", color: "#ffb34d", types: new Set(["assembling-machine", "furnace", "mining-drill", "lab", "rocket-silo", "agricultural-tower", "beacon"])},
@@ -37,22 +39,22 @@ const surfaceBounds = surface => {
         : null;
 };
 
-const MapEntityCanvas = ({entities, surface, view}) => {
+const MapEntityCanvas = ({entities, surface, view, detailZoom = entityDetailZoom, detailedSmallSurface = false}) => {
     const canvasRef = useRef(null);
     const bounds = surfaceBounds(surface);
 
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas || !bounds || !entities?.length || !surface?.width || !surface?.height) return;
-        const outputScale = Math.min(1, maximumOverlayDimension / surface.width, maximumOverlayDimension / surface.height);
-        const width = Math.max(1, Math.round(surface.width * outputScale));
-        const height = Math.max(1, Math.round(surface.height * outputScale));
+        const geometry = mapOverlayGeometry(surface, detailedSmallSurface);
+        if (!geometry) return;
+        const {outputScale, width, height} = geometry;
         canvas.width = width;
         canvas.height = height;
         const context = canvas.getContext("2d", {alpha: true});
         context.clearRect(0, 0, width, height);
         context.globalAlpha = 0.78;
-        context.lineWidth = 0.45;
+        context.lineWidth = Math.min(2, Math.max(0.45, outputScale * 0.08));
         context.strokeStyle = "rgba(5, 9, 13, 0.72)";
         const scaleX = surface.pixels_per_tile * outputScale;
         const scaleY = surface.pixels_per_tile * outputScale;
@@ -68,25 +70,25 @@ const MapEntityCanvas = ({entities, surface, view}) => {
                     const box = entity.bounding_box;
                     const x = (box.left_top.x - bounds.minX) * scaleX;
                     const y = (box.left_top.y - bounds.minY) * scaleY;
-                    const entityWidth = Math.max(0.7, (box.right_bottom.x - box.left_top.x) * scaleX);
-                    const entityHeight = Math.max(0.7, (box.right_bottom.y - box.left_top.y) * scaleY);
+                    const entityWidth = Math.max(0.7 * outputScale, (box.right_bottom.x - box.left_top.x) * scaleX);
+                    const entityHeight = Math.max(0.7 * outputScale, (box.right_bottom.y - box.left_top.y) * scaleY);
                     context.rect(x, y, entityWidth, entityHeight);
                 });
                 context.fill();
                 context.stroke();
             }
         });
-    }, [bounds?.minX, bounds?.minY, bounds?.maxX, bounds?.maxY, entities, surface?.height, surface?.pixels_per_tile, surface?.width]);
+    }, [bounds?.minX, bounds?.minY, bounds?.maxX, bounds?.maxY, detailedSmallSurface, entities, surface?.height, surface?.pixels_per_tile, surface?.width]);
 
     if (!bounds || !entities?.length) return null;
     return <canvas
         ref={canvasRef}
-        className={`ui-map-entity-overlay${view.zoom >= entityDetailZoom ? " is-visible" : ""}`}
+        className={`ui-map-entity-overlay${view.zoom >= detailZoom ? " is-visible" : ""}`}
         aria-hidden="true"
     />;
 };
 
-const MapEntityLegend = ({overlay, zoom}) => {
+const MapEntityLegend = ({overlay, zoom, detailZoom = entityDetailZoom}) => {
     const counts = React.useMemo(() => {
         const result = new Map();
         (overlay?.entities || []).forEach(entity => {
@@ -98,7 +100,7 @@ const MapEntityLegend = ({overlay, zoom}) => {
 
     if (!overlay?.surface?.entities_available || !surfaceBounds(overlay.surface)) return null;
     let status = null;
-    if (zoom < entityDetailZoom) status = `Zoom to ${Math.round(entityDetailZoom * 100)}% for building detail`;
+    if (zoom < detailZoom) status = `Zoom to ${Math.round(detailZoom * 100)}% for building detail`;
     else if (overlay.isLoading) status = "Loading building detail…";
     else if (overlay.error) status = "Building detail unavailable";
     else if (overlay.entities === null) status = "Loading building detail…";
@@ -119,7 +121,7 @@ const MapEntityLegend = ({overlay, zoom}) => {
 
 const clampZoom = value => Math.min(maximumZoom, Math.max(minimumZoom, value));
 
-const MapImageCanvas = ({src, alt, view, setView, onFullscreen = null, isFullscreen = false, isPixelated = false, entityOverlay = null}) => {
+const MapImageCanvas = ({src, alt, view, setView, onFullscreen = null, isFullscreen = false, isPixelated = false, entityOverlay = null, detailZoom = entityDetailZoom}) => {
     const viewportRef = useRef(null);
     const dragRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -281,15 +283,15 @@ const MapImageCanvas = ({src, alt, view, setView, onFullscreen = null, isFullscr
                         draggable="false"
                         onError={() => setImageFailed(true)}
                     />
-                    <MapEntityCanvas entities={entityOverlay?.entities} surface={entityOverlay?.surface} view={view}/>
+                    <MapEntityCanvas entities={entityOverlay?.entities} surface={entityOverlay?.surface} view={view} detailZoom={detailZoom} detailedSmallSurface={isPixelated}/>
                 </div>}
             </div>
         </div>
-        <MapEntityLegend overlay={entityOverlay} zoom={view.zoom}/>
+        <MapEntityLegend overlay={entityOverlay} zoom={view.zoom} detailZoom={detailZoom}/>
     </div>;
 };
 
-export const MapImageLightbox = ({src, alt, title, isOpen, close, view, setView, isPixelated = false, entityOverlay = null}) => {
+export const MapImageLightbox = ({src, alt, title, isOpen, close, view, setView, isPixelated = false, entityOverlay = null, detailZoom = entityDetailZoom}) => {
     const dialogRef = useRef(null);
     const closeRef = useRef(close);
     closeRef.current = close;
@@ -330,7 +332,7 @@ export const MapImageLightbox = ({src, alt, title, isOpen, close, view, setView,
                         <FontAwesomeIcon icon={faXmark}/>
                     </button>
                 </header>
-                <MapImageCanvas src={src} alt={alt} view={view} setView={setView} isFullscreen isPixelated={isPixelated} entityOverlay={entityOverlay}/>
+                <MapImageCanvas src={src} alt={alt} view={view} setView={setView} isFullscreen isPixelated={isPixelated} entityOverlay={entityOverlay} detailZoom={detailZoom}/>
             </section>
         </div>,
         modalRoot
