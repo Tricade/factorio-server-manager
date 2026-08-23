@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Container version="2">
-  <Name>FactorioServerManager-Tricade</Name>
+  <Name>Factorio Server Control</Name>
   <Repository>ghcr.io/tricade/factorio-server-manager:latest</Repository>
   <Registry>https://github.com/Tricade/factorio-server-manager/pkgs/container/factorio-server-manager</Registry>
   <Network>bridge</Network>
@@ -9,31 +9,33 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Tricade/factorio-server-manager/issues</Support>
   <Project>https://github.com/Tricade/factorio-server-manager</Project>
-  <Overview>A maintained modern fork of OpenFactorioServerManager. Operate one Factorio dedicated server through a responsive web interface with independent profiles, saves, fixed checkpoints, compatible mods and dependencies, stable/experimental/exact game versions, base Factorio or Space Age, world creation, factory-map snapshots, logs, users and safe server controls.</Overview>
+  <Overview>A maintained modern fork of the original Factorio Server Manager (OpenFactorioServerManager). Operate one Factorio dedicated server through a responsive web interface with independent profiles, saves, fixed checkpoints, compatible mods and dependencies, stable/experimental/exact game versions, base Factorio or Space Age, world creation, factory-map snapshots, logs, users and safe server controls.</Overview>
+  <Description>Factorio Server Control operates one persistent Factorio headless server through an authenticated web UI. It keeps manager state, saves, mods and configuration in explicit appdata mappings; supports independent stopped profiles; and restores the recorded exact Factorio version across container recreation. For original-manager migration compatibility, its technical appdata root remains factorio-server-manager and its /opt/fsm-data plus /opt/factorio paths remain stable; the public product rename does not require a storage rename.</Description>
   <Category>GameServers: Network:Management</Category>
   <ExtraSearchTerms>factorio dedicated server manager mods saves space age ofsm tricade</ExtraSearchTerms>
   <WebUI>http://[IP]:[PORT:80]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/templates/factorio-server-manager.xml</TemplateURL>
   <ReadMe>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/README.md</ReadMe>
   <Icon>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/icon.png</Icon>
-  <ExtraParams>--restart=unless-stopped</ExtraParams>
-  <Date>2026-08-22</Date>
-  <DonateText>Support Factorio Server Manager</DonateText>
+  <ExtraParams>--restart=unless-stopped --stop-timeout=180</ExtraParams>
+  <Date>2026-08-23</Date>
+  <DonateText>Support Factorio Server Control</DonateText>
   <DonateLink>https://ko-fi.com/tricade</DonateLink>
-  <Requires>Persistent manager-data, saves, mods and config paths are required. Internet access is required on first start so the selected official Factorio headless release can be downloaded. The image supports linux/amd64.</Requires>
-  <Changes>0.15.1: Added the public Community Applications template and one hierarchical appdata root with separate data, saves, mods and config directories.</Changes>
+  <Requires>Persistent manager-data, saves, mods and config paths are required. Internet access to Factorio's official services is required for game-version installation and requested Mod Portal operations; the manager has no built-in telemetry. Keep its HTTP Web UI on a trusted LAN/VPN or behind an HTTPS reverse proxy. Split-mount recreation needs download access to restore the recorded exact game version. The image supports linux/amd64.</Requires>
+  <Changes>0.16.0: Renamed the public app to Factorio Server Control, added player and detailed factory-map views, separated app and maintainer icons, hardened persistent deployment defaults, and reserved a three-minute clean-stop window. 0.15.1: Added the public Community Applications template and one hierarchical appdata root.</Changes>
   <License>MIT</License>
-  <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Controls.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Map_Lightbox.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Profiles.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Saves.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Mods.png</Screenshot>
 
-  <Config Name="Web UI Port" Target="80" Default="8080" Mode="tcp" Description="Host port used to open the Factorio Server Manager web interface." Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="Web UI Port" Target="80" Default="8080" Mode="tcp" Description="Host port used to open the Factorio Server Control web interface." Type="Port" Display="always" Required="true" Mask="false"/>
   <Config Name="Factorio Game Port" Target="34197" Default="34197" Mode="udp" Description="UDP port used by Factorio clients to connect to the game server." Type="Port" Display="always" Required="true" Mask="false"/>
   <Config Name="Manager Data (required)" Target="/opt/fsm-data" Default="/mnt/user/appdata/factorio-server-manager/data" Mode="rw" Description="Persistent manager database, UI users, configuration, logs, credentials, profiles, checkpoints and map snapshots. Never remove this mapping during an update." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Saves (required)" Target="/opt/factorio/saves" Default="/mnt/user/appdata/factorio-server-manager/saves" Mode="rw" Description="Persistent Factorio save files." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Mods (required)" Target="/opt/factorio/mods" Default="/mnt/user/appdata/factorio-server-manager/mods" Mode="rw" Description="Persistent downloaded mods, built-in game-mode selection and mod-list.json." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Config (required)" Target="/opt/factorio/config" Default="/mnt/user/appdata/factorio-server-manager/config" Mode="rw" Description="Persistent Factorio server and map configuration." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Initial Factorio Version" Target="FACTORIO_VERSION" Default="latest" Mode="" Description="Used only for the first installation: latest, stable or an exact version such as 2.1.14. Later UI choices are persisted across container updates." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Secure Session Cookie" Target="FSM_COOKIE_SECURE" Default="false" Mode="" Description="Use false for Unraid's direct HTTP Web UI. Set true only when the manager is always opened through an HTTPS reverse proxy." Type="Variable" Display="advanced" Required="true" Mask="false"/>
   <Config Name="RCON Password" Target="RCON_PASS" Default="" Mode="" Description="Optional internal Factorio RCON password. Leave empty to generate and persist a random password automatically." Type="Variable" Display="advanced" Required="false" Mask="true"/>
 </Container>

@@ -3,12 +3,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Support-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/tricade)
 
-# Factorio Server Manager
+# Factorio Server Control
 
 A self-hosted web interface for operating one Factorio dedicated server safely: profiles, saves, fixed checkpoints, mods, game versions, Space Age, world creation, logs, users and server controls in one responsive UI.
 
 > [!NOTE]
-> This repository is a modernized fork of the original [OpenFactorioServerManager/factorio-server-manager](https://github.com/OpenFactorioServerManager/factorio-server-manager) project. The original project, its authors and its contributors remain the source of the manager this fork builds on. See [Origin and attribution](#origin-and-attribution).
+> This repository is a modernized fork of the original **Factorio Server Manager** project, [OpenFactorioServerManager/factorio-server-manager](https://github.com/OpenFactorioServerManager/factorio-server-manager). The original project, its authors and its contributors remain the source of the manager this fork builds on. See [Origin and attribution](#origin-and-attribution).
 
 ## What this fork adds
 
@@ -16,6 +16,7 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 
 - Event-driven status updates without disruptive full-page polling.
 - Start, save-and-stop and force-stop controls available throughout the active-profile UI.
+- Live connected-player state plus snapshot-derived playtime ranking with explicit offline and freshness states.
 - Persistent internal autostart that restores the active profile after a container restart.
 - Staged Factorio release replacement with validation and rollback while persistent game data stays mounted.
 - Upload and path hardening, capped/redacted logs, local-only RCON and refusal to start with disposable manager or game-data paths.
@@ -41,6 +42,7 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 - Nauvis, planets, space platforms and modded surfaces listed separately.
 - Player-visible platform names and framing around persistent player construction instead of all explored terrain.
 - Direct wheel/button zoom, drag-to-pan, reset-to-fit and a separate fullscreen lightbox.
+- A lazy Canvas building-footprint layer and legend at detailed zoom levels, with graceful fallback for legacy snapshots.
 - Manual generation or a manager-wide scheduled refresh interval.
 - No exporter mod is added to the playable profile, and the running game process, original save, active mod list and achievement state are not modified.
 
@@ -66,33 +68,33 @@ The implementation details and deliberate boundaries are documented in [TECHNICA
 
 ## Screenshots
 
-### Overview and factory map
+### Operational overview
 
-![Factorio Server Manager overview and factory map](screenshots/Screenshot_Controls.png)
+![Factorio Server Control operational overview](screenshots/Screenshot_Controls.png)
 
-### Fullscreen map viewer
+### Factory map viewer
 
-![Factorio Server Manager fullscreen factory-map viewer](screenshots/Screenshot_Map_Lightbox.png)
+![Factorio Server Control fullscreen factory-map viewer](screenshots/Screenshot_Map_Lightbox.png)
 
 ### Independent profiles
 
-![Factorio Server Manager profile library](screenshots/Screenshot_Profiles.png)
+![Factorio Server Control profile library](screenshots/Screenshot_Profiles.png)
 
 ### New world
 
-![Factorio Server Manager new-world preview](screenshots/Screenshot_New_World.png)
+![Factorio Server Control new-world preview](screenshots/Screenshot_New_World.png)
 
 ### Saves and fixed checkpoints
 
-![Factorio Server Manager saves and checkpoints](screenshots/Screenshot_Saves.png)
+![Factorio Server Control saves and checkpoints](screenshots/Screenshot_Saves.png)
 
 ### Compatible mods and dependencies
 
-![Factorio Server Manager mod management](screenshots/Screenshot_Mods.png)
+![Factorio Server Control mod management](screenshots/Screenshot_Mods.png)
 
 ### Factorio version and Space Age mode
 
-![Factorio Server Manager version and mode selection](screenshots/Screenshot_Version_Mode.png)
+![Factorio Server Control version and mode selection](screenshots/Screenshot_Version_Mode.png)
 
 ## Runtime model
 
@@ -104,7 +106,7 @@ To run several Factorio servers at once, run several manager containers. Every c
 
 1. Copy `docker/.env.registry.example` to `docker/.env.registry`.
 2. Set `FSM_IMAGE` to a published image such as `ghcr.io/tricade/factorio-server-manager:latest` or an immutable SemVer tag.
-3. Replace `RCON_PASS` with a long random value and choose the first-install `FACTORIO_VERSION`: `latest`, `stable` or an exact three-part release.
+3. Choose the first-install `FACTORIO_VERSION`: `latest`, `stable` or an exact three-part release. Leave `RCON_PASS` empty to generate and persist a random localhost-only value, or supply your own long random value.
 4. Start the container:
 
 ```sh
@@ -121,7 +123,11 @@ The example publishes:
 | Manager UI | `80/tcp` | `8080/tcp` |
 | Factorio game server | `34197/udp` | `34197/udp` |
 
-The manager serves HTTP inside the container. Put it behind a trusted TLS reverse proxy before exposing it to the internet. The fuller `docker/docker-compose.yaml` example uses Traefik and requires a real domain and email address through an ignored local `.env` file.
+The manager serves HTTP inside the container. The direct registry example sets `FSM_COOKIE_SECURE=false` so login works over a private HTTP connection. Put the UI behind a trusted TLS reverse proxy before exposing it beyond a trusted LAN or VPN, and set `FSM_COOKIE_SECURE=true` whenever users always enter through HTTPS. The fuller `docker/docker-compose.yaml` example does both through Traefik and requires a real domain and email address in an ignored local `.env` file.
+
+## Privacy and outbound connections
+
+Factorio Server Control has no built-in analytics or telemetry. Manager accounts, configuration, logs, saves and map snapshots remain in the documented persistent mounts and are not sent to the fork maintainer. Release discovery and installation contact Factorio's official HTTPS services; mod search, authentication and downloads contact the official Factorio Mod Portal only when those features are used. When connecting a Factorio account, its password is submitted to `auth.factorio.com` over HTTPS but is not retained; the returned username/user key is stored with restrictive permissions in `/opt/fsm-data/factorio.auth`. Optional Factory Radio and Ko-fi links open their respective third-party sites only when selected in the browser. Review those services' own privacy terms before using them.
 
 ## Required persistent storage
 
@@ -135,7 +141,13 @@ The production entrypoint refuses to start when manager credentials or game data
 | `/opt/factorio/mods` | Downloaded and built-in mod state when using the split layout |
 | `/opt/factorio/config` | Factorio server and map configuration when using the split layout |
 
-Use either one complete `/opt/factorio` mount or all three split game-data mounts. Do not configure both layouts at once. The exact installed Factorio binary and selected release target are persisted in `/opt/fsm-data`, so a force pull restores the existing version instead of silently changing channels.
+Use either one complete `/opt/factorio` mount or all three split game-data mounts. Do not configure both layouts at once. A combined mount retains the installed program tree. With split mounts, `/opt/fsm-data/runtime-state.json` retains the exact installed version and selected target; after a container recreation the entrypoint downloads that same official version again instead of silently advancing a rolling channel. Split-mount recreations therefore require access to Factorio's official download service.
+
+## Compatibility with the original manager
+
+The public product name changed, but the compatibility-sensitive folder structure and technical namespace deliberately remain compatible with the original manager. The repository/image slug, executable name and default Unraid root `/mnt/user/appdata/factorio-server-manager/` are unchanged. The upstream Go module path, `FSM_*` environment names, `/opt/fsm-data`, `/opt/factorio` and existing database/config filenames also remain stable. This lets a stopped original Factorio Server Manager deployment be migrated without renaming its stored data solely for branding.
+
+Compatibility does not make live storage shareable. Stop the original container, take a backup and give the replacement exclusive access to the copied manager data and either the complete Factorio mount or all three supported split mounts. Legacy anonymous Docker volumes must be located and copied manually; the new persistence guard will not accept missing mappings. Keep the original data until login, users, profiles, saves, mods, settings and the selected Factorio version have been verified. See [Docker and Unraid migration](docker/README.md#migrate-a-legacy-installation) for the read-only discovery steps.
 
 ## First login
 
@@ -161,11 +173,11 @@ When the game is running, checkpoint creation asks Factorio over local RCON to w
 
 ### Container and game-server autostart
 
-Docker's restart policy controls the manager container. The manager-wide **Autostart** preference controls whether the active profile's Factorio process starts after manager initialization. Disable it when a deliberately stopped game server must remain stopped across container restarts.
+Docker's restart policy controls the manager container. On SIGTERM, the manager stops accepting HTTP work, requests a clean Factorio shutdown and allows up to 165 seconds inside the configured 180-second container grace period. The manager-wide **Autostart** preference controls whether the active profile's Factorio process starts after manager initialization. Disable it when a deliberately stopped game server must remain stopped across container restarts.
 
 ## Unraid
 
-The submission-ready Community Applications metadata lives in [ca_profile.xml](ca_profile.xml), and the canonical Docker template is [templates/factorio-server-manager.xml](templates/factorio-server-manager.xml). Once the listing is approved, search for **Factorio Server Manager** in the Unraid Apps tab.
+The submission-ready Community Applications metadata lives in [ca_profile.xml](ca_profile.xml), and the canonical Docker template is [templates/factorio-server-manager.xml](templates/factorio-server-manager.xml). Once the listing is approved, search for **Factorio Server Control** in the Unraid Apps tab.
 
 For a manual installation before approval, download the [raw template](https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/templates/factorio-server-manager.xml) to:
 
@@ -173,7 +185,7 @@ For a manual installation before approval, download the [raw template](https://r
 /boot/config/plugins/dockerMan/templates-user/my-factorio-server-manager.xml
 ```
 
-Then select `FactorioServerManager-Tricade` under **Docker → Add Container → User templates**. The distinct template name avoids confusion with the legacy upstream container already present in Community Applications. Every default host path lives below one appdata root:
+Then select **Factorio Server Control** under **Docker → Add Container → User templates**. Fork and maintainer attribution remains in the listing overview, project and support links instead of the visible product name. Every default host path lives below one appdata root:
 
 ```text
 /mnt/user/appdata/factorio-server-manager/
@@ -183,7 +195,7 @@ Then select `FactorioServerManager-Tricade` under **Docker → Add Container →
 └── config/
 ```
 
-The four container targets remain separate. The template does not add a second overlapping `/opt/factorio` path. More migration and deployment detail is available in [docker/README.md](docker/README.md).
+The public app name does not rename this technical appdata root. Its four container targets remain separate, and the template does not add a second overlapping `/opt/factorio` path. More migration and deployment detail is available in [docker/README.md](docker/README.md).
 
 ## Build from source
 
@@ -197,13 +209,16 @@ Build the frontend and backend release bundles:
 
 ```sh
 npm ci
+npm test
 npm run build
 cd src
+go version
 go test ./... -short -count=1
 go vet ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 ```
 
-On Windows, `scripts/build-release.ps1` creates the release bundle. On Linux, use `make build` or `make gen_release` for the cross-platform archives.
+On Windows, `scripts/build-release.ps1` creates the release bundle. On Linux, use `make build` or `make gen_release` for the cross-platform archives. The maintained release checklist and user-facing GitHub notes template live in [RELEASE.md](RELEASE.md).
 
 Build a local production container without publishing it:
 
@@ -211,7 +226,7 @@ Build a local production container without publishing it:
 .\scripts\publish-image.ps1 -Image factorio-server-manager -Tag local
 ```
 
-Publishing is deliberately opt-in through `-Push`. Releases use matching SemVer Git tags, npm versions and immutable container tags; `latest` is a moving alias built from the same release commit.
+Publishing is deliberately opt-in through `-Push`. The local helper may push non-release tags such as `edge`; it refuses `latest` and SemVer pushes because the GitHub release workflow owns those aliases. Releases use matching SemVer Git tags, npm versions and immutable container tags; `latest` is a moving alias built from the same release commit.
 
 ## Contributing
 
@@ -225,7 +240,7 @@ This fork releases from `main`. The historical upstream `develop` branch has a d
 
 ## Origin and attribution
 
-This fork is based on [OpenFactorioServerManager/factorio-server-manager](https://github.com/OpenFactorioServerManager/factorio-server-manager), originally created by Mitch Roote and developed with contributions from knoxfighter, Jannaahs and the wider upstream contributor community. Its upstream origin and copyright notices are preserved, and the project continues under the MIT License.
+Factorio Server Control is based on the original **Factorio Server Manager** project, [OpenFactorioServerManager/factorio-server-manager](https://github.com/OpenFactorioServerManager/factorio-server-manager), created by Mitch Roote and developed with contributions from knoxfighter, Jannaahs and the wider upstream contributor community. Its upstream origin and copyright notices are preserved, and the project continues under the MIT License.
 
 This fork is independently maintained and is not affiliated with or endorsed by Wube Software. Factorio is a trademark of Wube Software.
 
