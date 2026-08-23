@@ -18,6 +18,7 @@ var getMapSnapshotState = factorio.GetMapSnapshotState
 var triggerMapSnapshot = factorio.TriggerMapSnapshot
 var setMapSnapshotSettings = factorio.SetMapSnapshotSettings
 var readMapSnapshotImage = factorio.ReadMapSnapshotImage
+var readMapSnapshotEntities = factorio.ReadMapSnapshotEntities
 
 func GetMapSnapshot(w http.ResponseWriter, _ *http.Request) {
 	state, err := getMapSnapshotState()
@@ -86,8 +87,24 @@ func GetMapSnapshotImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("Cache-Control", "no-store")
 	http.ServeContent(w, r, "surface-"+surfaceID+".png", generatedAt, bytes.NewReader(contents))
+}
+
+func GetMapSnapshotEntities(w http.ResponseWriter, r *http.Request) {
+	surfaceID := mux.Vars(r)["surface"]
+	contents, generatedAt, err := readMapSnapshotEntities(surfaceID)
+	if errors.Is(err, factorio.ErrMapSnapshotNotFound) || errors.Is(err, factorio.ErrMapSnapshotSurfaceNotFound) || errors.Is(err, factorio.ErrMapSnapshotDetailsNotFound) {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Unable to load map snapshot entity details: %s", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeContent(w, r, "surface-"+surfaceID+"-entities.jsonl", generatedAt, bytes.NewReader(contents))
 }
 
 func writeMapSnapshotState(w http.ResponseWriter, state factorio.MapSnapshotState, status int) {

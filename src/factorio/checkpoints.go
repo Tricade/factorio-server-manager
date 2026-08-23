@@ -1,7 +1,6 @@
 package factorio
 
 import (
-	"archive/zip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -100,6 +99,7 @@ var checkpointSavesPath = func() string { return profileActiveDirectories()["sav
 var checkpointRunRCON = runCheckpointRCONCommand
 var checkpointCreateLiveSave = createLiveCheckpointSave
 var checkpointIDPattern = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}\.[0-9]{9}Z-(manual|interval|last-player|clean-stop)(-[0-9]+)?$`)
+var connectedPlayerCountPattern = regexp.MustCompile(`(?im)^[ \t]*online players[ \t]*\([ \t]*([0-9]+)[ \t]*\)[ \t]*:?[ \t]*\r?$`)
 
 func defaultCheckpointSettings() CheckpointSettings {
 	return CheckpointSettings{
@@ -362,11 +362,21 @@ func checkpointMonitorLoop(ctx context.Context, server *Server) {
 }
 
 func connectedPlayerCount() (int, error) {
-	response, err := checkpointRunRCON(`/silent-command rcon.print(#game.connected_players)`)
+	// Use Factorio's built-in multiplayer command. Lua console commands such as
+	// /silent-command permanently disable achievements for the live save.
+	response, err := checkpointRunRCON(`/players online count`)
 	if err != nil {
 		return 0, err
 	}
-	players, err := strconv.Atoi(strings.TrimSpace(response))
+	return parseConnectedPlayerCount(response)
+}
+
+func parseConnectedPlayerCount(response string) (int, error) {
+	matches := connectedPlayerCountPattern.FindAllStringSubmatch(response, -1)
+	if len(matches) != 1 {
+		return 0, fmt.Errorf("unexpected player count %q", response)
+	}
+	players, err := strconv.Atoi(matches[0][1])
 	if err != nil || players < 0 {
 		return 0, fmt.Errorf("unexpected player count %q", response)
 	}
@@ -599,8 +609,7 @@ func waitForCheckpointRCONReady(server *Server, timeout time.Duration) error {
 
 func runCheckpointRCONCommand(command string) (string, error) {
 	config := bootstrap.GetConfig()
-	address := config.ServerIP + ":" + strconv.Itoa(config.FactorioRconPort)
-	console, err := rcon.Dial(address, config.FactorioRconPass)
+	console, err := rcon.Dial(localRCONAddress(), config.FactorioRconPass)
 	if err != nil {
 		return "", err
 	}
@@ -706,15 +715,7 @@ func copyCheckpointAtomically(sourcePath, destinationPath string) error {
 }
 
 func verifyCheckpointZip(path string) error {
-	reader, err := zip.OpenReader(path)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	if len(reader.File) == 0 {
-		return errors.New("ZIP archive is empty")
-	}
-	return nil
+	return verifyFactorioSaveZip(path)
 }
 
 func listCheckpoints(profileID string) ([]Checkpoint, error) {

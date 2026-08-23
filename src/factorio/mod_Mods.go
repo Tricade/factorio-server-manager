@@ -3,13 +3,16 @@ package factorio
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
+	"net/url"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/OpenFactorioServerManager/factorio-server-manager/lockfile"
 )
@@ -26,7 +29,9 @@ type ModsResultList struct {
 	ModsResult []ModsResult `json:"mods"`
 }
 
-var FileLock lockfile.FileLock = lockfile.NewLock()
+var FileLock = lockfile.NewLock()
+
+const maximumModPortalArchiveBytes int64 = 512 * 1024 * 1024
 
 func NewMods(destination string) (Mods, error) {
 	var err error
@@ -74,7 +79,11 @@ func (mods *Mods) ListInstalledMods() ModsResultList {
 }
 
 func (mods *Mods) DeleteMod(modName string) error {
-	var err error
+	unlockMutation, err := lockActiveModMutation(mods.ModInfoList.Destination)
+	if err != nil {
+		return err
+	}
+	defer unlockMutation()
 
 	err = mods.ModInfoList.deleteMod(modName)
 	if err != nil {
@@ -92,28 +101,23 @@ func (mods *Mods) DeleteMod(modName string) error {
 }
 
 func (mods *Mods) createMod(modName string, fileName string, fileRc io.Reader) error {
-	var err error
+	return mods.createModWithLimit(modName, fileName, fileRc, 0)
+}
 
-	//check if mod already exists and delete it
-	if mods.ModSimpleList.CheckModExists(modName) {
-		err = mods.ModInfoList.deleteMod(modName)
-		if err != nil {
-			log.Printf("error when deleting mod: %s", err)
-			return err
+func (mods *Mods) createModWithLimit(modName string, fileName string, fileRc io.Reader, maximumBytes int64) error {
+	existingFiles := make([]string, 0)
+	for _, mod := range mods.ModInfoList.Mods {
+		if mod.Name == modName {
+			existingFiles = append(existingFiles, mod.FileName)
 		}
 	}
 
-	//create new mod
-	err = mods.ModInfoList.createMod(modName, fileName, fileRc)
+	// Stage, validate and atomically activate the new archive before removing
+	// any previous version. A failed download can therefore never erase the
+	// working copy it was meant to replace.
+	err := mods.ModInfoList.createModWithLimit(modName, fileName, fileRc, maximumBytes)
 	if err != nil {
 		log.Printf("error on creating mod-file: %s", err)
-
-		// removing mod completely
-		err2 := mods.ModSimpleList.deleteMod(modName)
-		if err2 != nil {
-			log.Printf("error deleting mod from modSimpleList: %s", err2)
-		}
-
 		return err
 	}
 
@@ -126,11 +130,32 @@ func (mods *Mods) createMod(modName string, fileName string, fileRc io.Reader) e
 		}
 	}
 
+	for _, previousFile := range existingFiles {
+		if previousFile == fileName {
+			continue
+		}
+		previousPath := filepath.Join(mods.ModInfoList.Destination, previousFile)
+		FileLock.LockW(previousPath)
+		removeErr := os.Remove(previousPath)
+		FileLock.Unlock(previousPath)
+		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return fmt.Errorf("remove previous mod archive %s: %w", previousFile, removeErr)
+		}
+	}
+	if err := mods.ModInfoList.listInstalledMods(); err != nil {
+		return fmt.Errorf("refresh installed mods: %w", err)
+	}
+
 	return nil
 }
 
-func (mods *Mods) DownloadMod(url string, filename string, modId string) error {
-	var err error
+func (mods *Mods) DownloadMod(downloadPath string, filename string, modId string) error {
+	if err := ValidatePathElement(filename); err != nil {
+		return fmt.Errorf("invalid mod filename: %w", err)
+	}
+	if err := ValidatePathElement(modId); err != nil {
+		return fmt.Errorf("invalid mod name: %w", err)
+	}
 
 	var credentials Credentials
 	status, err := credentials.Load()
@@ -143,10 +168,12 @@ func (mods *Mods) DownloadMod(url string, filename string, modId string) error {
 		return errors.New("error: credentials are invalid")
 	}
 
-	//download the mod from the mod portal api
-	completeUrl := modPortalBaseURL + url + "?username=" + credentials.Username + "&token=" + credentials.Userkey
+	completeURL, err := authenticatedModDownloadURL(downloadPath, credentials)
+	if err != nil {
+		return err
+	}
 
-	response, err := modPortalHTTPClient.Get(completeUrl)
+	response, err := modPortalHTTPClient.Get(completeURL)
 	if err != nil {
 		log.Printf("error on downloading mod: %s", err)
 		return err
@@ -158,11 +185,19 @@ func (mods *Mods) DownloadMod(url string, filename string, modId string) error {
 
 	if response.StatusCode != 200 {
 		log.Printf("StatusCode: %d", response.StatusCode)
-
-		return errors.New("Statuscode not 200: " + fmt.Sprint(response.StatusCode))
+		body, _ := readBoundedBody(response.Body, maximumModPortalErrorBodyBytes)
+		return fmt.Errorf("mod portal download returned HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+	}
+	if response.ContentLength > maximumModPortalArchiveBytes {
+		return fmt.Errorf("mod archive exceeds %d bytes", maximumModPortalArchiveBytes)
 	}
 
-	err = mods.createMod(modId, filename, response.Body)
+	unlockMutation, err := lockActiveModMutation(mods.ModInfoList.Destination)
+	if err != nil {
+		return err
+	}
+	defer unlockMutation()
+	err = mods.createModWithLimit(modId, filename, response.Body, maximumModPortalArchiveBytes)
 	if err != nil {
 		log.Printf("error when creating Mod: %s", err)
 		return err
@@ -175,21 +210,43 @@ func (mods *Mods) DownloadMod(url string, filename string, modId string) error {
 	return nil
 }
 
-func (mods *Mods) UploadMod(file multipart.File, header *multipart.FileHeader) error {
-	var err error
+func authenticatedModDownloadURL(downloadPath string, credentials Credentials) (string, error) {
+	reference, err := url.Parse(downloadPath)
+	if err != nil {
+		return "", fmt.Errorf("parse mod download path: %w", err)
+	}
+	if reference.IsAbs() || reference.Host != "" || reference.RawQuery != "" || reference.Fragment != "" || !strings.HasPrefix(reference.Path, "/download/") {
+		return "", errors.New("invalid mod portal download path")
+	}
+	base, err := url.Parse(modPortalBaseURL)
+	if err != nil || base.Scheme == "" || base.Host == "" {
+		return "", errors.New("invalid mod portal base URL")
+	}
+	target := base.ResolveReference(&url.URL{Path: reference.Path, RawPath: reference.RawPath})
+	query := target.Query()
+	query.Set("username", credentials.Username)
+	query.Set("token", credentials.Userkey)
+	target.RawQuery = query.Encode()
+	return target.String(), nil
+}
 
-	if filepath.Ext(header.Filename) != ".zip" {
+func (mods *Mods) UploadMod(file multipart.File, header *multipart.FileHeader) error {
+	if !strings.EqualFold(filepath.Ext(header.Filename), ".zip") {
 		log.Print("The uploaded file wasn't a zip-file")
 		return errors.New("the uploaded file wasn't a zip-file")
 	}
 
-	fileByteArray, err := ioutil.ReadAll(file)
+	size, err := file.Seek(0, io.SeekEnd)
 	if err != nil {
-		log.Printf("error reading file: %s", err)
-		return err
+		return fmt.Errorf("measure uploaded mod: %w", err)
 	}
-
-	zipReader, err := zip.NewReader(bytes.NewReader(fileByteArray), int64(len(fileByteArray)))
+	if size <= 0 {
+		return errors.New("uploaded mod archive is empty")
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewind uploaded mod: %w", err)
+	}
+	zipReader, err := zip.NewReader(file, size)
 	if err != nil {
 		log.Printf("Uploaded file could not put into zip.Reader: %s", err)
 		return err
@@ -202,13 +259,34 @@ func (mods *Mods) UploadMod(file multipart.File, header *multipart.FileHeader) e
 		return err
 	}
 
-	err = mods.createMod(modInfo.Name, header.Filename, bytes.NewReader(fileByteArray))
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewind validated mod: %w", err)
+	}
+	unlockMutation, err := lockActiveModMutation(mods.ModInfoList.Destination)
+	if err != nil {
+		return err
+	}
+	defer unlockMutation()
+	err = mods.createMod(modInfo.Name, header.Filename, file)
 	if err != nil {
 		log.Printf("error on creating Mod: %s", err)
 		return err
 	}
 
 	return nil
+}
+
+func lockActiveModMutation(destination string) (func(), error) {
+	activeMods := profileActiveDirectories()["mods"]
+	if activeMods == "" || filepath.Clean(destination) != filepath.Clean(activeMods) {
+		return func() {}, nil
+	}
+	serverLifecycleMutex.Lock()
+	if GetFactorioServer().IsBusy() {
+		serverLifecycleMutex.Unlock()
+		return nil, ErrServerActive
+	}
+	return serverLifecycleMutex.Unlock, nil
 }
 
 func (mods *Mods) UpdateMod(modName string, url string, filename string) error {
@@ -221,4 +299,33 @@ func (mods *Mods) UpdateMod(modName string, url string, filename string) error {
 	}
 
 	return nil
+}
+
+// SaveModConfiguration stages a complete profile-scoped mod configuration
+// before replacing it. The internal lifecycle recheck closes the race between
+// ServerOffMiddleware and an atomic server start claim.
+func SaveModConfiguration(destination, filename string, source io.Reader, maximumBytes int64) error {
+	if filename != "mod-list.json" && filename != "mod-settings.dat" {
+		return errors.New("unsupported mod configuration file")
+	}
+	var contents bytes.Buffer
+	if err := copyWithHardLimit(&contents, source, maximumBytes); err != nil {
+		return err
+	}
+	if filename == "mod-list.json" {
+		var list ModSimpleList
+		if err := json.Unmarshal(contents.Bytes(), &list); err != nil {
+			return fmt.Errorf("decode mod-list.json: %w", err)
+		}
+		if list.Mods == nil {
+			return errors.New("mod-list.json must contain a mods array")
+		}
+	}
+
+	serverLifecycleMutex.Lock()
+	defer serverLifecycleMutex.Unlock()
+	if GetFactorioServer().IsBusy() {
+		return ErrServerActive
+	}
+	return writeFileAtomically(filepath.Join(destination, filename), contents.Bytes(), 0644)
 }

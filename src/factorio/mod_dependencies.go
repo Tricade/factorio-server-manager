@@ -16,10 +16,11 @@ import (
 type ModDependencyKind string
 
 const (
-	ModDependencyRequired     ModDependencyKind = "required"
-	ModDependencyOptional     ModDependencyKind = "optional"
-	ModDependencyRecommended  ModDependencyKind = "recommended"
-	ModDependencyIncompatible ModDependencyKind = "incompatible"
+	ModDependencyRequired      ModDependencyKind = "required"
+	ModDependencyOptional      ModDependencyKind = "optional"
+	ModDependencyRecommended   ModDependencyKind = "recommended"
+	ModDependencyIncompatible  ModDependencyKind = "incompatible"
+	maximumModInstallPlanItems                   = 256
 )
 
 type ParsedModDependency struct {
@@ -201,6 +202,9 @@ func newModDependencyPlanner(request ModInstallPlanRequest) (*modDependencyPlann
 	if request.Version.Equals(NilVersion) {
 		return nil, errors.New("root mod version is required")
 	}
+	if len(request.Optional) > maximumModInstallPlanItems {
+		return nil, fmt.Errorf("at most %d optional mods may be selected", maximumModInstallPlanItems)
+	}
 
 	config := bootstrap.GetConfig()
 	mods, err := NewMods(config.FactorioModsDir)
@@ -289,6 +293,9 @@ func (planner *modDependencyPlanner) resolveRequired(dependency ParsedModDepende
 	}
 	planner.constraints[dependency.Name] = appendUniqueConstraint(planner.constraints[dependency.Name], dependency)
 
+	if planner.nodes[dependency.Name] == nil && len(planner.nodes) >= maximumModInstallPlanItems {
+		return fmt.Errorf("mod installation plan exceeds %d items", maximumModInstallPlanItems)
+	}
 	if info, found, err := planner.readBuiltInMod(dependency.Name); err != nil {
 		return err
 	} else if found {

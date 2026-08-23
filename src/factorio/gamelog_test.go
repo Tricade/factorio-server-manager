@@ -9,9 +9,9 @@ import (
 )
 
 func TestRedactLogLine(t *testing.T) {
-	line := `Program arguments: "factorio" "--password" "open-sesame" --token portal-token rcon_pass=console-secret`
+	line := `Program arguments: "factorio" "--password" "open-sesame" --token portal-token rcon_pass=console-secret settings={"password":"json-secret"}`
 	redacted := redactLogLine(line)
-	for _, secret := range []string{"open-sesame", "portal-token", "console-secret"} {
+	for _, secret := range []string{"open-sesame", "portal-token", "console-secret", "json-secret"} {
 		if strings.Contains(redacted, secret) {
 			t.Fatalf("secret %q was not redacted: %s", secret, redacted)
 		}

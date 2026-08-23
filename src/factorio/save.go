@@ -8,6 +8,13 @@ import (
 	"os"
 )
 
+const (
+	maximumSaveHeaderStringBytes = 1 * 1024 * 1024
+	maximumSaveHeaderMods        = 100000
+	maximumSaveHeaderStatForces  = 1024
+	maximumSaveHeaderStatEntries = 1_000_000
+)
+
 type archiveFile struct {
 	io.ReadCloser
 	archive io.Closer
@@ -85,7 +92,7 @@ func (h *SaveHeader) DecodeFrom(r io.Reader) (err error) {
 	var scratch [8]byte
 
 	var fv version64
-	_, err = r.Read(scratch[:8])
+	_, err = io.ReadFull(r, scratch[:8])
 	if err != nil {
 		return err
 	}
@@ -98,7 +105,7 @@ func (h *SaveHeader) DecodeFrom(r io.Reader) (err error) {
 
 	if !h.FactorioVersion.Less(Version{0, 17, 0, 0}) {
 		//FIXME correct naming
-		_, err = r.Read(scratch[:1])
+		_, err = io.ReadFull(r, scratch[:1])
 		if err != nil {
 			return fmt.Errorf("read first random 0.17 byte: %v", err)
 		}
@@ -123,21 +130,21 @@ func (h *SaveHeader) DecodeFrom(r io.Reader) (err error) {
 	}
 
 	// Read Difficulty
-	_, err = r.Read(scratch[:1])
+	_, err = io.ReadFull(r, scratch[:1])
 	if err != nil {
 		return fmt.Errorf("read Difficulty: %v", err)
 	}
 	h.Difficulty = scratch[0]
 
 	// Read finished as bool
-	_, err = r.Read(scratch[:1])
+	_, err = io.ReadFull(r, scratch[:1])
 	if err != nil {
 		return fmt.Errorf("read Finished: %v", err)
 	}
 	h.Finished = scratch[0] != 0
 
 	// Read playerWon as bool
-	_, err = r.Read(scratch[:1])
+	_, err = io.ReadFull(r, scratch[:1])
 	if err != nil {
 		return fmt.Errorf("read PlayerWon: %v", err)
 	}
@@ -150,27 +157,27 @@ func (h *SaveHeader) DecodeFrom(r io.Reader) (err error) {
 	}
 
 	if !h.FactorioVersion.Less(Version{0, 12, 0, 0}) {
-		_, err = r.Read(scratch[:1])
+		_, err = io.ReadFull(r, scratch[:1])
 		if err != nil {
 			return fmt.Errorf("read CanContinue: %v", err)
 		}
 		h.CanContinue = scratch[0] != 0
 
-		_, err = r.Read(scratch[:1])
+		_, err = io.ReadFull(r, scratch[:1])
 		if err != nil {
 			return fmt.Errorf("read FinishedButContinuing: %v", err)
 		}
 		h.FinishedButContinuing = scratch[0] != 0
 	}
 
-	_, err = r.Read(scratch[:1])
+	_, err = io.ReadFull(r, scratch[:1])
 	if err != nil {
 		return fmt.Errorf("read SavingReplay: %v", err)
 	}
 	h.SavingReplay = scratch[0] != 0
 
 	if atLeast016 {
-		_, err = r.Read(scratch[:1])
+		_, err = io.ReadFull(r, scratch[:1])
 		if err != nil {
 			return fmt.Errorf("read AllowNonAdminDebugOptions: %v", err)
 		}
@@ -184,13 +191,13 @@ func (h *SaveHeader) DecodeFrom(r io.Reader) (err error) {
 	}
 	h.LoadedFrom = Version(loadedFrom)
 
-	_, err = r.Read(scratch[:2])
+	_, err = io.ReadFull(r, scratch[:2])
 	if err != nil {
 		return fmt.Errorf("read LoadedFromBuild: %v", err)
 	}
 	h.LoadedFromBuild = binary.LittleEndian.Uint16(scratch[:2])
 
-	_, err = r.Read(scratch[:1])
+	_, err = io.ReadFull(r, scratch[:1])
 	if err != nil {
 		return fmt.Errorf("read AllowedCommands: %v", err)
 	}
@@ -217,11 +224,14 @@ func (h *SaveHeader) DecodeFrom(r io.Reader) (err error) {
 			return fmt.Errorf("read num mods: %v", err)
 		}
 	} else {
-		_, err = r.Read(scratch[:4])
+		_, err = io.ReadFull(r, scratch[:4])
 		if err != nil {
 			return fmt.Errorf("read num mods: %v", err)
 		}
 		n = binary.LittleEndian.Uint32(scratch[:4])
+	}
+	if n > maximumSaveHeaderMods {
+		return fmt.Errorf("read num mods: %d exceeds limit %d", n, maximumSaveHeaderMods)
 	}
 
 	for i := uint32(0); i < n; i++ {
@@ -238,7 +248,7 @@ func (h *SaveHeader) DecodeFrom(r io.Reader) (err error) {
 func readOptimUint(r io.Reader, v Version, bitSize int) (uint32, error) {
 	var b [4]byte
 	if !v.Less(Version{0, 14, 14, 0}) {
-		_, err := r.Read(b[:1])
+		_, err := io.ReadFull(r, b[:1])
 		if err != nil {
 			return 0, err
 		}
@@ -251,7 +261,7 @@ func readOptimUint(r io.Reader, v Version, bitSize int) (uint32, error) {
 		panic("invalid bit size")
 	}
 
-	_, err := r.Read(b[:bitSize/8])
+	_, err := io.ReadFull(r, b[:bitSize/8])
 	if err != nil {
 		return 0, err
 	}
@@ -277,15 +287,18 @@ func readString(r io.Reader, game Version, forceOptimized bool) (s string, err e
 		}
 	} else {
 		var b [4]byte
-		_, err := r.Read(b[:])
+		_, err := io.ReadFull(r, b[:])
 		if err != nil {
 			return "", fmt.Errorf("failed to read string length: %v", err)
 		}
 		n = uint32(binary.LittleEndian.Uint32(b[:]))
 	}
 
+	if n > maximumSaveHeaderStringBytes {
+		return "", fmt.Errorf("string length %d exceeds limit %d", n, maximumSaveHeaderStringBytes)
+	}
 	d := make([]byte, n)
-	_, err = r.Read(d)
+	_, err = io.ReadFull(r, d)
 	if err != nil {
 		return "", fmt.Errorf("failed to read string: %v", err)
 	}
@@ -297,31 +310,37 @@ func (h *SaveHeader) readStats(r io.Reader) (stats map[byte][]map[uint16]uint32,
 	var scratch [4]byte
 	stats = make(map[byte][]map[uint16]uint32)
 
-	_, err = r.Read(scratch[:4])
+	_, err = io.ReadFull(r, scratch[:4])
 	if err != nil {
 		return nil, err
 	}
 	n := binary.LittleEndian.Uint32(scratch[:4])
+	if n > maximumSaveHeaderStatForces {
+		return nil, fmt.Errorf("stat force count %d exceeds limit %d", n, maximumSaveHeaderStatForces)
+	}
 	for i := uint32(0); i < n; i++ {
-		_, err := r.Read(scratch[:1])
+		_, err := io.ReadFull(r, scratch[:1])
 		if err != nil {
 			return nil, fmt.Errorf("read stat %d force id: %v", i, err)
 		}
-		id := scratch[1]
+		id := scratch[0]
 		for j := 0; j < 3; j++ {
 			st := make(map[uint16]uint32)
-			_, err = r.Read(scratch[:4])
+			_, err = io.ReadFull(r, scratch[:4])
 			if err != nil {
 				return nil, fmt.Errorf("read stat %d (id %d) length: %v", i, id, err)
 			}
 			length := binary.LittleEndian.Uint32(scratch[:4])
+			if length > maximumSaveHeaderStatEntries {
+				return nil, fmt.Errorf("stat %d (id %d) length %d exceeds limit %d", i, id, length, maximumSaveHeaderStatEntries)
+			}
 			for k := uint32(0); k < length; k++ {
-				_, err = r.Read(scratch[:2])
+				_, err = io.ReadFull(r, scratch[:2])
 				if err != nil {
 					return nil, fmt.Errorf("read stat %d (id %d; index %d) key: %v", i, id, k, err)
 				}
 				key := binary.LittleEndian.Uint16(scratch[:2])
-				_, err = r.Read(scratch[:4])
+				_, err = io.ReadFull(r, scratch[:4])
 				if err != nil {
 					return nil, fmt.Errorf("read stat %d (id %d; index %d) val: %v", i, id, k, err)
 				}
@@ -350,7 +369,7 @@ func (m *Mod) decodeFrom(r io.Reader, game Version) (err error) {
 
 	var scratch [4]byte
 	if game.Greater(Version{0, 15, 0, 91}) {
-		_, err = r.Read(scratch[:4])
+		_, err = io.ReadFull(r, scratch[:4])
 		if err != nil {
 			return err
 		}

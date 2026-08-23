@@ -16,6 +16,7 @@ import (
 	"image/png"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,6 +24,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/OpenFactorioServerManager/factorio-server-manager/bootstrap"
 )
@@ -39,6 +42,12 @@ const (
 	maximumMapSnapshotExportBytes = 512 * 1024 * 1024
 	maximumMapSnapshotManifest    = 4 * 1024 * 1024
 	maximumMapSnapshotErrorLog    = 64 * 1024
+	maximumMapSnapshotImageBytes  = 128 * 1024 * 1024
+	maximumMapSnapshotEntityCount = 100000
+	maximumMapSnapshotEntityTotal = 1_000_000_000
+	maximumMapSnapshotEntityBytes = 32 * 1024 * 1024
+	maximumMapSnapshotEntityLine  = 16 * 1024
+	maximumMapSnapshotCoordinate  = 10_000_000
 	mapSnapshotChunkPixels        = 32
 )
 
@@ -46,6 +55,7 @@ var (
 	ErrMapSnapshotBusy            = errors.New("a map snapshot is already being generated")
 	ErrMapSnapshotNotFound        = errors.New("map snapshot not found")
 	ErrMapSnapshotSurfaceNotFound = errors.New("map snapshot surface not found")
+	ErrMapSnapshotDetailsNotFound = errors.New("map snapshot entity details not found")
 	ErrInvalidMapSnapshotSettings = errors.New("invalid map snapshot settings")
 )
 
@@ -54,15 +64,56 @@ type MapSnapshotSettings struct {
 }
 
 type MapSnapshotSurface struct {
-	ID          string `json:"id"`
-	Index       uint32 `json:"index"`
-	Name        string `json:"name"`
-	SurfaceName string `json:"surface_name,omitempty"`
-	Kind        string `json:"kind,omitempty"`
-	ChunkCount  int    `json:"chunk_count"`
-	Width       int    `json:"width"`
-	Height      int    `json:"height"`
-	File        string `json:"-"`
+	ID                  string  `json:"id"`
+	Index               uint32  `json:"index"`
+	Name                string  `json:"name"`
+	SurfaceName         string  `json:"surface_name,omitempty"`
+	Kind                string  `json:"kind,omitempty"`
+	ChunkCount          int     `json:"chunk_count"`
+	Width               int     `json:"width"`
+	Height              int     `json:"height"`
+	ViewBoundsAvailable bool    `json:"view_bounds_available"`
+	ViewMinTileX        int     `json:"view_min_tile_x"`
+	ViewMinTileY        int     `json:"view_min_tile_y"`
+	ViewMaxTileX        int     `json:"view_max_tile_x"`
+	ViewMaxTileY        int     `json:"view_max_tile_y"`
+	PixelsPerTile       float64 `json:"pixels_per_tile"`
+	EntitiesAvailable   bool    `json:"entities_available"`
+	EntityCount         int     `json:"entity_count"`
+	EntityTotalCount    int     `json:"entity_total_count"`
+	EntityTruncated     bool    `json:"entity_truncated"`
+	File                string  `json:"-"`
+	EntityFile          string  `json:"-"`
+}
+
+// MapSnapshotEntity describes the footprint of a player-force building in the
+// isolated snapshot save. It deliberately contains geometry and prototype
+// identifiers only; chart images do not contain client sprites.
+type MapSnapshotEntity struct {
+	Name        string                 `json:"name"`
+	Type        string                 `json:"type"`
+	Direction   uint8                  `json:"direction"`
+	BoundingBox MapSnapshotBoundingBox `json:"bounding_box"`
+}
+
+type MapSnapshotBoundingBox struct {
+	LeftTop     MapSnapshotPosition `json:"left_top"`
+	RightBottom MapSnapshotPosition `json:"right_bottom"`
+}
+
+type MapSnapshotPosition struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// MapSnapshotPlayer is read only from the isolated snapshot save. OnlineTime
+// is Factorio's persisted LuaPlayer.online_time value in game ticks; no Lua is
+// executed against the live server to collect it.
+type MapSnapshotPlayer struct {
+	Name              string `json:"name"`
+	OnlineTimeTicks   uint64 `json:"online_time_ticks"`
+	OnlineTimeSeconds uint64 `json:"online_time_seconds"`
+	Rank              int    `json:"rank"`
 }
 
 type MapSnapshot struct {
@@ -74,6 +125,7 @@ type MapSnapshot struct {
 	FactorioVersion string               `json:"factorio_version"`
 	GameTick        uint64               `json:"game_tick"`
 	Force           string               `json:"force"`
+	Players         []MapSnapshotPlayer  `json:"players"`
 	Surfaces        []MapSnapshotSurface `json:"surfaces"`
 }
 
@@ -91,6 +143,7 @@ type mapSnapshotExporterManifest struct {
 	GameTick      uint64                       `json:"game_tick"`
 	GameVersion   string                       `json:"game_version"`
 	Force         string                       `json:"force"`
+	Players       []mapSnapshotExporterPlayer  `json:"players"`
 	Surfaces      []mapSnapshotExporterSurface `json:"surfaces"`
 }
 
@@ -100,6 +153,7 @@ func (manifest *mapSnapshotExporterManifest) UnmarshalJSON(contents []byte) erro
 		GameTick      uint64          `json:"game_tick"`
 		GameVersion   string          `json:"game_version"`
 		Force         string          `json:"force"`
+		Players       json.RawMessage `json:"players"`
 		Surfaces      json.RawMessage `json:"surfaces"`
 	}
 	if err := json.Unmarshal(contents, &raw); err != nil {
@@ -109,6 +163,12 @@ func (manifest *mapSnapshotExporterManifest) UnmarshalJSON(contents []byte) erro
 	manifest.GameTick = raw.GameTick
 	manifest.GameVersion = raw.GameVersion
 	manifest.Force = raw.Force
+	trimmedPlayers := bytes.TrimSpace(raw.Players)
+	if bytes.Equal(trimmedPlayers, []byte("{}")) || bytes.Equal(trimmedPlayers, []byte("null")) || len(trimmedPlayers) == 0 {
+		manifest.Players = []mapSnapshotExporterPlayer{}
+	} else if err := json.Unmarshal(trimmedPlayers, &manifest.Players); err != nil {
+		return err
+	}
 	trimmedSurfaces := bytes.TrimSpace(raw.Surfaces)
 	if bytes.Equal(trimmedSurfaces, []byte("{}")) || bytes.Equal(trimmedSurfaces, []byte("null")) || len(trimmedSurfaces) == 0 {
 		manifest.Surfaces = []mapSnapshotExporterSurface{}
@@ -117,21 +177,30 @@ func (manifest *mapSnapshotExporterManifest) UnmarshalJSON(contents []byte) erro
 	return json.Unmarshal(trimmedSurfaces, &manifest.Surfaces)
 }
 
+type mapSnapshotExporterPlayer struct {
+	Name       string `json:"name"`
+	OnlineTime uint64 `json:"online_time"`
+}
+
 type mapSnapshotExporterSurface struct {
-	Index        uint32 `json:"index"`
-	Name         string `json:"name"`
-	SurfaceName  string `json:"surface_name,omitempty"`
-	Kind         string `json:"kind,omitempty"`
-	ChunkCount   int    `json:"chunk_count"`
-	MinX         int    `json:"min_x"`
-	MinY         int    `json:"min_y"`
-	MaxX         int    `json:"max_x"`
-	MaxY         int    `json:"max_y"`
-	ViewMinTileX *int   `json:"view_min_tile_x,omitempty"`
-	ViewMinTileY *int   `json:"view_min_tile_y,omitempty"`
-	ViewMaxTileX *int   `json:"view_max_tile_x,omitempty"`
-	ViewMaxTileY *int   `json:"view_max_tile_y,omitempty"`
-	File         string `json:"file"`
+	Index            uint32 `json:"index"`
+	Name             string `json:"name"`
+	SurfaceName      string `json:"surface_name,omitempty"`
+	Kind             string `json:"kind,omitempty"`
+	ChunkCount       int    `json:"chunk_count"`
+	MinX             int    `json:"min_x"`
+	MinY             int    `json:"min_y"`
+	MaxX             int    `json:"max_x"`
+	MaxY             int    `json:"max_y"`
+	ViewMinTileX     *int   `json:"view_min_tile_x,omitempty"`
+	ViewMinTileY     *int   `json:"view_min_tile_y,omitempty"`
+	ViewMaxTileX     *int   `json:"view_max_tile_x,omitempty"`
+	ViewMaxTileY     *int   `json:"view_max_tile_y,omitempty"`
+	File             string `json:"file"`
+	EntityFile       string `json:"entity_file"`
+	EntityCount      int    `json:"entity_count"`
+	EntityTotalCount int    `json:"entity_total_count"`
+	EntityTruncated  bool   `json:"entity_truncated"`
 }
 
 type mapSnapshotExporterChunk struct {
@@ -492,16 +561,17 @@ func findMapSnapshotSourceSave(directory, selected string, running bool) (*Save,
 			latestAutosave = &copySave
 		}
 	}
-	if running && latestAutosave != nil && (selectedSave == nil || selectedSave.LastMod.Before(latestAutosave.LastMod)) {
+	baseSave := selectedSave
+	if baseSave == nil {
+		baseSave = latestSave
+	}
+	if running && latestAutosave != nil && (baseSave == nil || baseSave.LastMod.Before(latestAutosave.LastMod)) {
 		return latestAutosave, nil
 	}
-	if selectedSave != nil {
-		return selectedSave, nil
+	if baseSave != nil {
+		return baseSave, nil
 	}
-	if latestSave == nil {
-		return nil, errors.New("no usable save is available for a map snapshot")
-	}
-	return latestSave, nil
+	return nil, errors.New("no usable save is available for a map snapshot")
 }
 
 func prepareMapSnapshotMods(source, destination, factorioVersion string) error {
@@ -727,53 +797,91 @@ func readMapSnapshotExporterManifest(directory string) (mapSnapshotExporterManif
 		if surface.File != expectedFile {
 			return mapSnapshotExporterManifest{}, fmt.Errorf("invalid map exporter file for surface %d", surface.Index)
 		}
-		info, err := os.Stat(filepath.Join(directory, surface.File))
-		if err != nil || !info.Mode().IsRegular() || info.Size() > maximumMapSnapshotExportBytes {
+		info, err := os.Lstat(filepath.Join(directory, surface.File))
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > maximumMapSnapshotExportBytes {
 			if err == nil {
 				err = errors.New("surface export is invalid or too large")
 			}
 			return mapSnapshotExporterManifest{}, fmt.Errorf("validate surface %d export: %w", surface.Index, err)
 		}
+		expectedEntityFile := "surface-" + strconv.FormatUint(uint64(surface.Index), 10) + "-entities.jsonl"
+		if surface.EntityFile != expectedEntityFile || surface.EntityCount < 0 || surface.EntityCount > maximumMapSnapshotEntityCount || surface.EntityTotalCount < surface.EntityCount || surface.EntityTotalCount > maximumMapSnapshotEntityTotal || surface.EntityTruncated != (surface.EntityTotalCount > surface.EntityCount) {
+			return mapSnapshotExporterManifest{}, fmt.Errorf("invalid map exporter entity metadata for surface %d", surface.Index)
+		}
+		entityInfo, err := os.Lstat(filepath.Join(directory, surface.EntityFile))
+		if err != nil || entityInfo.Mode()&os.ModeSymlink != 0 || !entityInfo.Mode().IsRegular() || entityInfo.Size() > maximumMapSnapshotEntityBytes {
+			if err == nil {
+				err = errors.New("surface entity export is invalid or too large")
+			}
+			return mapSnapshotExporterManifest{}, fmt.Errorf("validate surface %d entity export: %w", surface.Index, err)
+		}
 		seen[surface.Index] = true
+	}
+	seenPlayers := make(map[string]bool, len(manifest.Players))
+	for _, player := range manifest.Players {
+		if player.Name == "" || utf8.RuneCountInString(player.Name) > 200 || strings.IndexFunc(player.Name, unicode.IsControl) >= 0 || seenPlayers[player.Name] {
+			return mapSnapshotExporterManifest{}, errors.New("map exporter player metadata is invalid")
+		}
+		seenPlayers[player.Name] = true
 	}
 	return manifest, nil
 }
 
 func readMapSnapshotFile(path string, maximumBytes int64) ([]byte, error) {
-	file, err := os.Open(path)
+	file, info, err := openRegularMapSnapshotFile(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
-	info, err := file.Stat()
+	if info.Size() > maximumBytes {
+		return nil, errors.New("file is not regular or exceeds the size limit")
+	}
+	contents, err := io.ReadAll(io.LimitReader(file, maximumBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Size() > maximumBytes {
-		return nil, errors.New("file is not regular or exceeds the size limit")
+	if int64(len(contents)) > maximumBytes {
+		return nil, errors.New("file exceeds the size limit")
 	}
-	return io.ReadAll(io.LimitReader(file, maximumBytes+1))
+	return contents, nil
 }
 
 func readMapSnapshotFileTail(path string, maximumBytes int64) ([]byte, error) {
-	file, err := os.Open(path)
+	file, info, err := openRegularMapSnapshotFile(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, errors.New("file is not regular")
-	}
 	if info.Size() > maximumBytes {
 		if _, err := file.Seek(info.Size()-maximumBytes, io.SeekStart); err != nil {
 			return nil, err
 		}
 	}
 	return io.ReadAll(io.LimitReader(file, maximumBytes))
+}
+
+func openRegularMapSnapshotFile(path string) (*os.File, os.FileInfo, error) {
+	pathInfo, err := os.Lstat(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if pathInfo.Mode()&os.ModeSymlink != 0 || !pathInfo.Mode().IsRegular() {
+		return nil, nil, errors.New("file is not regular")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	fileInfo, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, nil, err
+	}
+	if !fileInfo.Mode().IsRegular() || !os.SameFile(pathInfo, fileInfo) {
+		file.Close()
+		return nil, nil, errors.New("file changed while it was opened")
+	}
+	return file, fileInfo, nil
 }
 
 func persistRenderedMapSnapshot(profile Profile, source Save, manifest mapSnapshotExporterManifest, exportDirectory string) error {
@@ -790,23 +898,62 @@ func persistRenderedMapSnapshot(profile Profile, source Save, manifest mapSnapsh
 	surfaces := make([]MapSnapshotSurface, 0, len(manifest.Surfaces))
 	for _, exportedSurface := range manifest.Surfaces {
 		filename := "surface-" + strconv.FormatUint(uint64(exportedSurface.Index), 10) + ".png"
+		geometry, err := calculateMapSnapshotRenderGeometry(exportedSurface)
+		if err != nil {
+			return fmt.Errorf("calculate surface %q geometry: %w", exportedSurface.Name, err)
+		}
 		width, height, err := renderMapSnapshotSurface(exportedSurface, filepath.Join(exportDirectory, exportedSurface.File), filepath.Join(stage, filename))
 		if err != nil {
 			return fmt.Errorf("render surface %q: %w", exportedSurface.Name, err)
 		}
+		entityFilename := "surface-" + strconv.FormatUint(uint64(exportedSurface.Index), 10) + "-entities.jsonl"
+		if err := writeMapSnapshotEntityFile(filepath.Join(exportDirectory, exportedSurface.EntityFile), filepath.Join(stage, entityFilename), exportedSurface.EntityCount); err != nil {
+			return fmt.Errorf("persist entity details for surface %q: %w", exportedSurface.Name, err)
+		}
 		surfaces = append(surfaces, MapSnapshotSurface{
-			ID:          strconv.FormatUint(uint64(exportedSurface.Index), 10),
-			Index:       exportedSurface.Index,
-			Name:        exportedSurface.Name,
-			SurfaceName: exportedSurface.SurfaceName,
-			Kind:        exportedSurface.Kind,
-			ChunkCount:  exportedSurface.ChunkCount,
-			Width:       width,
-			Height:      height,
-			File:        filename,
+			ID:                  strconv.FormatUint(uint64(exportedSurface.Index), 10),
+			Index:               exportedSurface.Index,
+			Name:                exportedSurface.Name,
+			SurfaceName:         exportedSurface.SurfaceName,
+			Kind:                exportedSurface.Kind,
+			ChunkCount:          exportedSurface.ChunkCount,
+			Width:               width,
+			Height:              height,
+			ViewBoundsAvailable: true,
+			ViewMinTileX:        geometry.MinTileX,
+			ViewMinTileY:        geometry.MinTileY,
+			ViewMaxTileX:        geometry.MaxTileX,
+			ViewMaxTileY:        geometry.MaxTileY,
+			PixelsPerTile:       geometry.PixelsPerTile,
+			EntitiesAvailable:   true,
+			EntityCount:         exportedSurface.EntityCount,
+			EntityTotalCount:    exportedSurface.EntityTotalCount,
+			EntityTruncated:     exportedSurface.EntityTruncated,
+			File:                filename,
+			EntityFile:          entityFilename,
 		})
 	}
 	sort.SliceStable(surfaces, func(left, right int) bool { return surfaces[left].Index < surfaces[right].Index })
+	players := make([]MapSnapshotPlayer, 0, len(manifest.Players))
+	for _, exportedPlayer := range manifest.Players {
+		players = append(players, MapSnapshotPlayer{
+			Name:              exportedPlayer.Name,
+			OnlineTimeTicks:   exportedPlayer.OnlineTime,
+			OnlineTimeSeconds: exportedPlayer.OnlineTime / 60,
+		})
+	}
+	sort.SliceStable(players, func(left, right int) bool {
+		if players[left].OnlineTimeTicks != players[right].OnlineTimeTicks {
+			return players[left].OnlineTimeTicks > players[right].OnlineTimeTicks
+		}
+		return strings.ToLower(players[left].Name) < strings.ToLower(players[right].Name)
+	})
+	for index := range players {
+		players[index].Rank = index + 1
+		if index > 0 && players[index].OnlineTimeTicks == players[index-1].OnlineTimeTicks {
+			players[index].Rank = players[index-1].Rank
+		}
+	}
 	snapshot := MapSnapshot{
 		SchemaVersion:   mapSnapshotSchemaVersion,
 		ProfileID:       profile.ID,
@@ -816,6 +963,7 @@ func persistRenderedMapSnapshot(profile Profile, source Save, manifest mapSnapsh
 		FactorioVersion: manifest.GameVersion,
 		GameTick:        manifest.GameTick,
 		Force:           manifest.Force,
+		Players:         players,
 		Surfaces:        surfaces,
 	}
 	if err := writeMapSnapshotJSONAtomically(filepath.Join(stage, mapSnapshotMetadataFileName), snapshot, 0600); err != nil {
@@ -824,28 +972,132 @@ func persistRenderedMapSnapshot(profile Profile, source Save, manifest mapSnapsh
 	return activateMapSnapshotDirectory(profile.ID, stage)
 }
 
+func writeMapSnapshotEntityFile(sourcePath, destinationPath string, expectedCount int) error {
+	if expectedCount < 0 || expectedCount > maximumMapSnapshotEntityCount {
+		return errors.New("entity count exceeds the limit")
+	}
+	source, info, err := openRegularMapSnapshotFile(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	if info.Size() > maximumMapSnapshotEntityBytes {
+		return errors.New("entity dataset exceeds the size limit")
+	}
+	destination, err := os.OpenFile(destinationPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	processErr := processMapSnapshotEntities(io.LimitReader(source, maximumMapSnapshotEntityBytes+1), expectedCount, destination)
+	if processErr == nil {
+		processErr = destination.Sync()
+	}
+	closeErr := destination.Close()
+	if processErr != nil {
+		_ = os.Remove(destinationPath)
+		return processErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(destinationPath)
+		return closeErr
+	}
+	return nil
+}
+
+func processMapSnapshotEntities(reader io.Reader, expectedCount int, destination io.Writer) error {
+	if expectedCount < 0 || expectedCount > maximumMapSnapshotEntityCount {
+		return errors.New("entity count exceeds the limit")
+	}
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 4096), maximumMapSnapshotEntityLine)
+	count := 0
+	var written int64
+	for scanner.Scan() {
+		if count >= maximumMapSnapshotEntityCount {
+			return errors.New("entity dataset contains too many records")
+		}
+		entity, err := decodeMapSnapshotEntity(scanner.Bytes())
+		if err != nil {
+			return fmt.Errorf("decode entity line %d: %w", count+1, err)
+		}
+		count++
+		if destination == nil {
+			continue
+		}
+		line, err := json.Marshal(entity)
+		if err != nil {
+			return err
+		}
+		line = append(line, '\n')
+		if len(line) > maximumMapSnapshotEntityLine || written+int64(len(line)) > maximumMapSnapshotEntityBytes {
+			return errors.New("canonical entity dataset exceeds the size limit")
+		}
+		amount, err := destination.Write(line)
+		if err != nil {
+			return err
+		}
+		if amount != len(line) {
+			return io.ErrShortWrite
+		}
+		written += int64(amount)
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	if count != expectedCount {
+		return fmt.Errorf("expected %d entities, read %d", expectedCount, count)
+	}
+	return nil
+}
+
+func decodeMapSnapshotEntity(line []byte) (MapSnapshotEntity, error) {
+	var entity MapSnapshotEntity
+	decoder := json.NewDecoder(bytes.NewReader(line))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&entity); err != nil {
+		return MapSnapshotEntity{}, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			err = errors.New("entity line contains more than one JSON value")
+		}
+		return MapSnapshotEntity{}, err
+	}
+	if !validMapSnapshotEntityLabel(entity.Name) || !validMapSnapshotEntityLabel(entity.Type) {
+		return MapSnapshotEntity{}, errors.New("entity name or type is invalid")
+	}
+	if entity.Direction > 15 {
+		return MapSnapshotEntity{}, errors.New("entity direction is invalid")
+	}
+	coordinates := []float64{
+		entity.BoundingBox.LeftTop.X,
+		entity.BoundingBox.LeftTop.Y,
+		entity.BoundingBox.RightBottom.X,
+		entity.BoundingBox.RightBottom.Y,
+	}
+	for _, coordinate := range coordinates {
+		if math.IsNaN(coordinate) || math.IsInf(coordinate, 0) || math.Abs(coordinate) > maximumMapSnapshotCoordinate {
+			return MapSnapshotEntity{}, errors.New("entity bounding box coordinate is invalid")
+		}
+	}
+	if entity.BoundingBox.LeftTop.X > entity.BoundingBox.RightBottom.X || entity.BoundingBox.LeftTop.Y > entity.BoundingBox.RightBottom.Y {
+		return MapSnapshotEntity{}, errors.New("entity bounding box is inverted")
+	}
+	return entity, nil
+}
+
+func validMapSnapshotEntityLabel(value string) bool {
+	return value != "" && utf8.ValidString(value) && utf8.RuneCountInString(value) <= 200 && strings.IndexFunc(value, unicode.IsControl) < 0
+}
+
 func renderMapSnapshotSurface(surface mapSnapshotExporterSurface, sourcePath, destinationPath string) (int, int, error) {
-	renderMinX, renderMinY, renderMaxX, renderMaxY, err := mapSnapshotRenderTileBounds(surface)
+	geometry, err := calculateMapSnapshotRenderGeometry(surface)
 	if err != nil {
 		return 0, 0, err
 	}
-	sourceWidth := renderMaxX - renderMinX + 1
-	sourceHeight := renderMaxY - renderMinY + 1
-	if sourceWidth < 1 || sourceHeight < 1 {
-		return 0, 0, errors.New("surface bounds are empty")
-	}
-	scale := 1.0
-	if sourceWidth > maximumMapSnapshotDimension || sourceHeight > maximumMapSnapshotDimension {
-		widthScale := float64(maximumMapSnapshotDimension) / float64(sourceWidth)
-		heightScale := float64(maximumMapSnapshotDimension) / float64(sourceHeight)
-		if widthScale < heightScale {
-			scale = widthScale
-		} else {
-			scale = heightScale
-		}
-	}
-	width := max(1, int(float64(sourceWidth)*scale))
-	height := max(1, int(float64(sourceHeight)*scale))
+	renderMinX, renderMinY, renderMaxX, renderMaxY := geometry.MinTileX, geometry.MinTileY, geometry.MaxTileX, geometry.MaxTileY
+	scale := geometry.PixelsPerTile
+	width, height := geometry.Width, geometry.Height
 	canvas := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.RGBA{R: 7, G: 12, B: 17, A: 255}}, image.Point{}, draw.Src)
 
@@ -908,6 +1160,42 @@ func renderMapSnapshotSurface(surface mapSnapshotExporterSurface, sourcePath, de
 		return 0, 0, closeErr
 	}
 	return width, height, nil
+}
+
+type mapSnapshotRenderGeometry struct {
+	MinTileX      int
+	MinTileY      int
+	MaxTileX      int
+	MaxTileY      int
+	Width         int
+	Height        int
+	PixelsPerTile float64
+}
+
+func calculateMapSnapshotRenderGeometry(surface mapSnapshotExporterSurface) (mapSnapshotRenderGeometry, error) {
+	renderMinX, renderMinY, renderMaxX, renderMaxY, err := mapSnapshotRenderTileBounds(surface)
+	if err != nil {
+		return mapSnapshotRenderGeometry{}, err
+	}
+	sourceWidth := renderMaxX - renderMinX + 1
+	sourceHeight := renderMaxY - renderMinY + 1
+	if sourceWidth < 1 || sourceHeight < 1 {
+		return mapSnapshotRenderGeometry{}, errors.New("surface bounds are empty")
+	}
+	scale := 1.0
+	if sourceWidth > maximumMapSnapshotDimension || sourceHeight > maximumMapSnapshotDimension {
+		widthScale := float64(maximumMapSnapshotDimension) / float64(sourceWidth)
+		heightScale := float64(maximumMapSnapshotDimension) / float64(sourceHeight)
+		if widthScale < heightScale {
+			scale = widthScale
+		} else {
+			scale = heightScale
+		}
+	}
+	return mapSnapshotRenderGeometry{
+		MinTileX: renderMinX, MinTileY: renderMinY, MaxTileX: renderMaxX, MaxTileY: renderMaxY,
+		Width: max(1, int(float64(sourceWidth)*scale)), Height: max(1, int(float64(sourceHeight)*scale)), PixelsPerTile: scale,
+	}, nil
 }
 
 func mapSnapshotRenderTileBounds(surface mapSnapshotExporterSurface) (int, int, int, int, error) {
@@ -1017,7 +1305,7 @@ func loadMapSnapshot(profileID string) (*MapSnapshot, error) {
 	}
 	mapSnapshotStoreGate.RLock()
 	defer mapSnapshotStoreGate.RUnlock()
-	contents, err := os.ReadFile(filepath.Join(mapSnapshotRootPath(), profileID, mapSnapshotMetadataFileName))
+	contents, err := readMapSnapshotFile(filepath.Join(mapSnapshotRootPath(), profileID, mapSnapshotMetadataFileName), maximumMapSnapshotManifest)
 	if err != nil {
 		return nil, err
 	}
@@ -1030,12 +1318,61 @@ func loadMapSnapshot(profileID string) (*MapSnapshot, error) {
 	}
 	for index := range snapshot.Surfaces {
 		surface := &snapshot.Surfaces[index]
-		if surface.ID != strconv.FormatUint(uint64(surface.Index), 10) {
-			return nil, errors.New("map snapshot surface metadata is invalid")
+		if err := populateMapSnapshotSurfaceFiles(surface); err != nil {
+			return nil, err
 		}
-		surface.File = "surface-" + surface.ID + ".png"
 	}
 	return &snapshot, nil
+}
+
+func populateMapSnapshotSurfaceFiles(surface *MapSnapshotSurface) error {
+	if surface.ID != strconv.FormatUint(uint64(surface.Index), 10) || surface.ChunkCount < 1 || surface.ChunkCount > maximumMapSnapshotChunks || surface.Width < 1 || surface.Width > maximumMapSnapshotDimension || surface.Height < 1 || surface.Height > maximumMapSnapshotDimension {
+		return errors.New("map snapshot surface metadata is invalid")
+	}
+	surface.File = "surface-" + surface.ID + ".png"
+	if !surface.ViewBoundsAvailable {
+		if surface.ViewMinTileX != 0 || surface.ViewMinTileY != 0 || surface.ViewMaxTileX != 0 || surface.ViewMaxTileY != 0 || surface.PixelsPerTile != 0 || surface.EntitiesAvailable {
+			return errors.New("map snapshot view metadata is invalid")
+		}
+	} else if err := validateStoredMapSnapshotGeometry(*surface); err != nil {
+		return err
+	}
+	if !surface.EntitiesAvailable {
+		if surface.EntityCount != 0 || surface.EntityTotalCount != 0 || surface.EntityTruncated {
+			return errors.New("map snapshot entity metadata is invalid")
+		}
+		surface.EntityFile = ""
+		return nil
+	}
+	if surface.EntityCount < 0 || surface.EntityCount > maximumMapSnapshotEntityCount || surface.EntityTotalCount < surface.EntityCount || surface.EntityTotalCount > maximumMapSnapshotEntityTotal || surface.EntityTruncated != (surface.EntityTotalCount > surface.EntityCount) {
+		return errors.New("map snapshot entity metadata is invalid")
+	}
+	surface.EntityFile = "surface-" + surface.ID + "-entities.jsonl"
+	return nil
+}
+
+func validateStoredMapSnapshotGeometry(surface MapSnapshotSurface) error {
+	coordinates := []int{surface.ViewMinTileX, surface.ViewMinTileY, surface.ViewMaxTileX, surface.ViewMaxTileY}
+	for _, coordinate := range coordinates {
+		if coordinate < -maximumMapSnapshotCoordinate || coordinate > maximumMapSnapshotCoordinate {
+			return errors.New("map snapshot view metadata is invalid")
+		}
+	}
+	if surface.ViewMinTileX > surface.ViewMaxTileX || surface.ViewMinTileY > surface.ViewMaxTileY {
+		return errors.New("map snapshot view metadata is invalid")
+	}
+	sourceWidth := surface.ViewMaxTileX - surface.ViewMinTileX + 1
+	sourceHeight := surface.ViewMaxTileY - surface.ViewMinTileY + 1
+	expectedScale := 1.0
+	if sourceWidth > maximumMapSnapshotDimension || sourceHeight > maximumMapSnapshotDimension {
+		expectedScale = math.Min(float64(maximumMapSnapshotDimension)/float64(sourceWidth), float64(maximumMapSnapshotDimension)/float64(sourceHeight))
+	}
+	expectedWidth := max(1, int(float64(sourceWidth)*expectedScale))
+	expectedHeight := max(1, int(float64(sourceHeight)*expectedScale))
+	if surface.Width != expectedWidth || surface.Height != expectedHeight || math.IsNaN(surface.PixelsPerTile) || math.IsInf(surface.PixelsPerTile, 0) || math.Abs(surface.PixelsPerTile-expectedScale) > 1e-12 {
+		return errors.New("map snapshot view metadata is invalid")
+	}
+	return nil
 }
 
 func ReadMapSnapshotImage(surfaceID string) ([]byte, time.Time, error) {
@@ -1048,7 +1385,7 @@ func ReadMapSnapshotImage(surfaceID string) ([]byte, time.Time, error) {
 	}
 	mapSnapshotStoreGate.RLock()
 	defer mapSnapshotStoreGate.RUnlock()
-	contents, err := os.ReadFile(filepath.Join(mapSnapshotRootPath(), profile.ID, mapSnapshotMetadataFileName))
+	contents, err := readMapSnapshotFile(filepath.Join(mapSnapshotRootPath(), profile.ID, mapSnapshotMetadataFileName), maximumMapSnapshotManifest)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, time.Time{}, ErrMapSnapshotNotFound
 	}
@@ -1056,18 +1393,68 @@ func ReadMapSnapshotImage(surfaceID string) ([]byte, time.Time, error) {
 		return nil, time.Time{}, err
 	}
 	var snapshot MapSnapshot
-	if err := json.Unmarshal(contents, &snapshot); err != nil || snapshot.ProfileID != profile.ID {
+	if err := json.Unmarshal(contents, &snapshot); err != nil || snapshot.SchemaVersion != mapSnapshotSchemaVersion || snapshot.ProfileID != profile.ID {
 		return nil, time.Time{}, ErrMapSnapshotNotFound
 	}
-	for _, surface := range snapshot.Surfaces {
-		if surface.ID != surfaceID || surface.ID != strconv.FormatUint(uint64(surface.Index), 10) {
+	for index := range snapshot.Surfaces {
+		surface := &snapshot.Surfaces[index]
+		if surface.ID != surfaceID {
 			continue
 		}
-		imageBytes, err := os.ReadFile(filepath.Join(mapSnapshotRootPath(), profile.ID, "surface-"+surfaceID+".png"))
+		if err := populateMapSnapshotSurfaceFiles(surface); err != nil {
+			return nil, time.Time{}, ErrMapSnapshotNotFound
+		}
+		imageBytes, err := readMapSnapshotFile(filepath.Join(mapSnapshotRootPath(), profile.ID, surface.File), maximumMapSnapshotImageBytes)
 		if err != nil {
 			return nil, time.Time{}, err
 		}
 		return imageBytes, snapshot.GeneratedAt, nil
+	}
+	return nil, time.Time{}, ErrMapSnapshotSurfaceNotFound
+}
+
+// ReadMapSnapshotEntities returns a bounded, validated NDJSON dataset for one
+// surface. Each line is a MapSnapshotEntity from the isolated save exporter.
+func ReadMapSnapshotEntities(surfaceID string) ([]byte, time.Time, error) {
+	if _, err := strconv.ParseUint(surfaceID, 10, 32); err != nil {
+		return nil, time.Time{}, ErrMapSnapshotSurfaceNotFound
+	}
+	profile, err := activeMapSnapshotProfile()
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	mapSnapshotStoreGate.RLock()
+	defer mapSnapshotStoreGate.RUnlock()
+	contents, err := readMapSnapshotFile(filepath.Join(mapSnapshotRootPath(), profile.ID, mapSnapshotMetadataFileName), maximumMapSnapshotManifest)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, time.Time{}, ErrMapSnapshotNotFound
+	}
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	var snapshot MapSnapshot
+	if err := json.Unmarshal(contents, &snapshot); err != nil || snapshot.SchemaVersion != mapSnapshotSchemaVersion || snapshot.ProfileID != profile.ID {
+		return nil, time.Time{}, ErrMapSnapshotNotFound
+	}
+	for index := range snapshot.Surfaces {
+		surface := &snapshot.Surfaces[index]
+		if surface.ID != surfaceID {
+			continue
+		}
+		if err := populateMapSnapshotSurfaceFiles(surface); err != nil {
+			return nil, time.Time{}, ErrMapSnapshotNotFound
+		}
+		if !surface.EntitiesAvailable {
+			return nil, time.Time{}, ErrMapSnapshotDetailsNotFound
+		}
+		entityBytes, err := readMapSnapshotFile(filepath.Join(mapSnapshotRootPath(), profile.ID, surface.EntityFile), maximumMapSnapshotEntityBytes)
+		if err != nil {
+			return nil, time.Time{}, err
+		}
+		if err := processMapSnapshotEntities(bytes.NewReader(entityBytes), surface.EntityCount, nil); err != nil {
+			return nil, time.Time{}, fmt.Errorf("validate stored map snapshot entities: %w", err)
+		}
+		return entityBytes, snapshot.GeneratedAt, nil
 	}
 	return nil, time.Time{}, ErrMapSnapshotSurfaceNotFound
 }

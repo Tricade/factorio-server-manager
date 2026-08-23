@@ -1,22 +1,11 @@
 local export_root = "fsm-map-exporter"
 local batch_size = 64
+local entity_batch_size = 256
 local fallback_chart_requested = false
 local chunk_size = 32
-
-local transient_entity_types = {
-    ["character"] = true,
-    ["combat-robot"] = true,
-    ["construction-robot"] = true,
-    ["corpse"] = true,
-    ["highlight-box"] = true,
-    ["item-entity"] = true,
-    ["item-request-proxy"] = true,
-    ["logistic-robot"] = true,
-    ["particle-source"] = true,
-    ["projectile"] = true,
-    ["smoke-with-trigger"] = true,
-    ["speech-bubble"] = true
-}
+local maximum_entity_count = 100000
+local maximum_entity_bytes = 24 * 1024 * 1024
+local maximum_entity_line_bytes = 12 * 1024
 
 local function ordered_surfaces()
     local surfaces = {}
@@ -29,6 +18,17 @@ local function ordered_surfaces()
     return surfaces
 end
 
+local function ordered_players()
+    local players = {}
+    for _, player in pairs(game.players) do
+        players[#players + 1] = player
+    end
+    table.sort(players, function(left, right)
+        return string.lower(left.name) < string.lower(right.name)
+    end)
+    return players
+end
+
 local function player_force()
     if game.forces.player then
         return game.forces.player
@@ -39,6 +39,14 @@ local function player_force()
         end
     end
     return nil
+end
+
+local function building_prototype_names()
+    local names = {}
+    for name, _ in pairs(prototypes.get_entity_filtered({{filter = "building"}})) do
+        names[name] = true
+    end
+    return names
 end
 
 local function flush_lines(filename, lines)
@@ -66,14 +74,24 @@ local function surface_identity(surface)
     return surface.name, "surface"
 end
 
-local function surface_content_bounds(surface, force)
+local function export_entity_details(surface, force, building_names, filename)
     local min_x = nil
     local min_y = nil
     local max_x = nil
     local max_y = nil
+    local lines = {}
+    local entity_count = 0
+    local entity_total_count = 0
+    local entity_bytes = 0
+    local entity_truncated = false
+
+    -- Always create the file so a surface with no buildings still has a valid,
+    -- independently retrievable (empty) detail dataset.
+    helpers.write_file(filename, "", false)
 
     for _, entity in pairs(surface.find_entities_filtered({force = force})) do
-        if entity.valid and not transient_entity_types[entity.type] then
+        if entity.valid and building_names[entity.name] then
+            entity_total_count = entity_total_count + 1
             local box = entity.bounding_box
             local left_top = box and box.left_top or entity.position
             local right_bottom = box and box.right_bottom or entity.position
@@ -81,14 +99,42 @@ local function surface_content_bounds(surface, force)
             min_y = min_y and math.min(min_y, left_top.y) or left_top.y
             max_x = max_x and math.max(max_x, right_bottom.x) or right_bottom.x
             max_y = max_y and math.max(max_y, right_bottom.y) or right_bottom.y
+
+            if entity_count < maximum_entity_count then
+                local line = helpers.table_to_json({
+                    name = entity.name,
+                    type = entity.type,
+                    direction = entity.direction,
+                    bounding_box = {
+                        left_top = {x = left_top.x, y = left_top.y},
+                        right_bottom = {x = right_bottom.x, y = right_bottom.y}
+                    }
+                })
+                local line_bytes = #line + 1
+                if line_bytes <= maximum_entity_line_bytes and entity_bytes + line_bytes <= maximum_entity_bytes then
+                    lines[#lines + 1] = line
+                    entity_count = entity_count + 1
+                    entity_bytes = entity_bytes + line_bytes
+                    if #lines >= entity_batch_size then
+                        flush_lines(filename, lines)
+                    end
+                else
+                    entity_truncated = true
+                end
+            else
+                entity_truncated = true
+            end
         end
     end
+    flush_lines(filename, lines)
 
-    return min_x, min_y, max_x, max_y
+    if entity_count < entity_total_count then
+        entity_truncated = true
+    end
+    return entity_count, entity_total_count, entity_truncated, min_x, min_y, max_x, max_y
 end
 
-local function fitted_tile_bounds(surface, force, min_x, min_y, max_x, max_y)
-    local content_min_x, content_min_y, content_max_x, content_max_y = surface_content_bounds(surface, force)
+local function fitted_tile_bounds(surface, min_x, min_y, max_x, max_y, content_min_x, content_min_y, content_max_x, content_max_y)
     if not content_min_x then
         return min_x * chunk_size, min_y * chunk_size, (max_x + 1) * chunk_size - 1, (max_y + 1) * chunk_size - 1
     end
@@ -117,8 +163,17 @@ local function export_map()
         game_tick = game.tick,
         game_version = helpers.game_version,
         force = force and force.name or "",
+        players = {},
         surfaces = {}
     }
+    local building_names = building_prototype_names()
+
+    for _, player in ipairs(ordered_players()) do
+        manifest.players[#manifest.players + 1] = {
+            name = player.name,
+            online_time = player.online_time
+        }
+    end
 
     if force then
         for _, surface in ipairs(ordered_surfaces()) do
@@ -151,7 +206,9 @@ local function export_map()
 
             if chunk_count > 0 then
                 local display_name, kind = surface_identity(surface)
-                local view_min_x, view_min_y, view_max_x, view_max_y = fitted_tile_bounds(surface, force, min_x, min_y, max_x, max_y)
+                local entity_filename = export_root .. "/surface-" .. surface.index .. "-entities.jsonl"
+                local entity_count, entity_total_count, entity_truncated, content_min_x, content_min_y, content_max_x, content_max_y = export_entity_details(surface, force, building_names, entity_filename)
+                local view_min_x, view_min_y, view_max_x, view_max_y = fitted_tile_bounds(surface, min_x, min_y, max_x, max_y, content_min_x, content_min_y, content_max_x, content_max_y)
                 manifest.surfaces[#manifest.surfaces + 1] = {
                     index = surface.index,
                     name = display_name,
@@ -166,7 +223,11 @@ local function export_map()
                     view_min_tile_y = view_min_y,
                     view_max_tile_x = view_max_x,
                     view_max_tile_y = view_max_y,
-                    file = "surface-" .. surface.index .. ".jsonl"
+                    file = "surface-" .. surface.index .. ".jsonl",
+                    entity_file = "surface-" .. surface.index .. "-entities.jsonl",
+                    entity_count = entity_count,
+                    entity_total_count = entity_total_count,
+                    entity_truncated = entity_truncated
                 }
             end
         end

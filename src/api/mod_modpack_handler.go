@@ -1,13 +1,10 @@
 package api
 
 import (
-	"archive/zip"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	"github.com/OpenFactorioServerManager/factorio-server-manager/bootstrap"
@@ -135,65 +132,18 @@ func ModPackDeleteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ModPackDownloadHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var resp interface{}
-
 	err, _, modPackName, resp := ReadModPackRequest(w, r)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 		WriteResponse(w, resp)
 		return
 	}
-
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.zip\"", modPackName))
-
-	zipWriter := zip.NewWriter(w)
-	defer zipWriter.Close()
-
 	config := bootstrap.GetConfig()
-
-	//iterate over folder and create everything in the zip
-	err = filepath.Walk(filepath.Join(config.FactorioModPackDir, modPackName), func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() == false {
-			writer, err := zipWriter.Create(info.Name())
-			if err != nil {
-				log.Printf("error on creating new file inside zip: %s", err)
-				return err
-			}
-
-			file, err := os.Open(path)
-			if err != nil {
-				log.Printf("error on opening modfile: %s", err)
-				return err
-			}
-			// Close file, when function returns
-			defer func() {
-				err2 := file.Close()
-				if err == nil && err2 != nil {
-					log.Printf("Error closing file: %s", err2)
-					err = err2
-				}
-			}()
-
-			_, err = io.Copy(writer, file)
-			if err != nil {
-				log.Printf("error on copying file into zip: %s", err)
-				return err
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		resp = fmt.Sprintf("error on walking over the modpack: %s", err)
-		log.Println(resp)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
-		WriteResponse(w, resp)
+	if err := serveDirectoryZip(w, filepath.Join(config.FactorioModPackDir, modPackName), modPackName+".zip", false); err != nil {
+		log.Printf("error on walking over the modpack: %s", err)
+		http.Error(w, "Unable to build mod pack archive", http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/zip;charset=UTF-8")
 }
 
 func ModPackLoadHandler(w http.ResponseWriter, r *http.Request) {
@@ -215,7 +165,11 @@ func ModPackLoadHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = modPackMap[modPackName].LoadModPack()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		if errors.Is(err, factorio.ErrServerActive) {
+			w.WriteHeader(http.StatusLocked)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		resp = fmt.Sprintf("Error loading modpack file: %s", err)
 		log.Println(resp)
 		return
@@ -403,6 +357,20 @@ func ModPackModUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+	config := bootstrap.GetConfig()
+	if config.MaxUploadSize > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, config.MaxUploadSize)
+	}
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		resp = fmt.Sprintf("error parsing mod-pack upload: %s", err)
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+		} else {
+			w.WriteHeader(http.StatusBadRequest)
+		}
+		return
+	}
 
 	formFile, fileHeader, err := r.FormFile("mod_file")
 	if err != nil {
@@ -412,8 +380,16 @@ func ModPackModUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer formFile.Close()
+	if err := factorio.ValidatePathElement(fileHeader.Filename); err != nil {
+		resp = fmt.Sprintf("invalid mod filename: %s", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	err, modPackMap, modPackName, resp := ReadModPackRequest(w, r)
+	if err != nil {
+		return
+	}
 
 	err = modPackMap[modPackName].Mods.UploadMod(formFile, fileHeader)
 	if err != nil {
@@ -446,7 +422,6 @@ func ModPackModPortalInstallHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-
 	err, packMap, packName, resp := ReadModPackRequest(w, r)
 	if err != nil {
 		return
@@ -481,6 +456,11 @@ func ModPackModPortalInstallMultipleHandler(w http.ResponseWriter, r *http.Reque
 	}
 	resp, err = ReadFromRequestBody(w, r, &data)
 	if err != nil {
+		return
+	}
+	if len(data) > maximumPortalBatchInstallItems {
+		resp = fmt.Sprintf("At most %d mods can be installed in one request", maximumPortalBatchInstallItems)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 

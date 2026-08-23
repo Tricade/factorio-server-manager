@@ -39,6 +39,7 @@ type Server struct {
 	LogChan        chan []string          `json:"-"`
 	startupReady   bool
 	stopSignaled   bool
+	starting       bool
 }
 
 type ServerStatus struct {
@@ -55,7 +56,22 @@ type ServerStatus struct {
 var instantiated Server
 var once sync.Once
 var stateMutex sync.RWMutex
+var serverLifecycleMutex sync.Mutex
 var factorioVersionPattern = regexp.MustCompile(`Version.*?((\d+\.)?(\d+\.)?(\*|\d+)+)`)
+
+var ErrServerActive = errors.New("Factorio server is already running, starting or stopping")
+
+type serverStartSnapshot struct {
+	BindIP       string
+	Port         int
+	Savefile     string
+	Version      Version
+	SettingsJSON []byte
+}
+
+// serverBeforeProcessStart is a narrow test seam used to hold the claimed
+// starting state before any mutable process setup occurs.
+var serverBeforeProcessStart = func(serverStartSnapshot) {}
 
 func (server *Server) SetRunning(newState bool) {
 	stopped := false
@@ -65,6 +81,7 @@ func (server *Server) SetRunning(newState bool) {
 		return
 	}
 	server.Running = newState
+	server.starting = false
 	if !newState {
 		stopped = true
 		server.Stopping = false
@@ -108,6 +125,12 @@ func (server *Server) GetRunning() bool {
 	return server.Running
 }
 
+func (server *Server) IsBusy() bool {
+	stateMutex.RLock()
+	defer stateMutex.RUnlock()
+	return server.Running || server.Stopping || server.starting
+}
+
 func (server *Server) IsStopping() bool {
 	stateMutex.RLock()
 	defer stateMutex.RUnlock()
@@ -135,15 +158,21 @@ func (server *Server) Snapshot() ServerStatus {
 	}
 }
 
-func (server *Server) ConfigureStart(bindIP string, port int, savefile string) {
+func (server *Server) ConfigureStart(bindIP string, port int, savefile string) error {
+	serverLifecycleMutex.Lock()
+	defer serverLifecycleMutex.Unlock()
 	stateMutex.Lock()
 	defer stateMutex.Unlock()
+	if server.Running || server.starting {
+		return ErrServerActive
+	}
 	server.BindIP = bindIP
 	server.Port = port
 	server.Savefile = savefile
 	server.Stopping = false
 	server.startupReady = false
 	server.stopSignaled = false
+	return nil
 }
 
 func (server *Server) claimStopSignalIfReady() bool {
@@ -171,12 +200,19 @@ func (server *Server) markStartupReady() bool {
 }
 
 func (server *Server) setRconIfRunning(console *rcon.RemoteConsole) bool {
+	serverRCONCommandMutex.Lock()
+	defer serverRCONCommandMutex.Unlock()
 	stateMutex.Lock()
-	defer stateMutex.Unlock()
-	if !server.Running || server.Stopping {
+	if !server.Running {
+		stateMutex.Unlock()
 		return false
 	}
+	previous := server.Rcon
 	server.Rcon = console
+	stateMutex.Unlock()
+	if previous != nil {
+		_ = previous.Close()
+	}
 	return true
 }
 
@@ -187,6 +223,8 @@ func (server *Server) getRcon() *rcon.RemoteConsole {
 }
 
 func (server *Server) closeRcon() {
+	serverRCONCommandMutex.Lock()
+	defer serverRCONCommandMutex.Unlock()
 	stateMutex.Lock()
 	console := server.Rcon
 	server.Rcon = nil
@@ -200,31 +238,103 @@ func (server *Server) closeRcon() {
 }
 
 func (server *Server) autostart() {
-	var err error
-	if server.BindIP == "" {
-		server.BindIP = "0.0.0.0"
-
-	}
-	if server.Port == 0 {
-		server.Port = 34197
-	}
-	if server.Savefile == "" {
-		server.Savefile = "Load Latest"
-	}
-
-	err = server.Run()
-
+	err := server.Run()
 	if err != nil {
 		log.Printf("Error starting Factorio server: %+v", err)
-		return
 	}
-
 }
 
 func SetFactorioServer(server Server) {
+	serverLifecycleMutex.Lock()
+	defer serverLifecycleMutex.Unlock()
 	stateMutex.Lock()
 	defer stateMutex.Unlock()
 	instantiated = server
+}
+
+// SettingsSnapshot returns a detached JSON-compatible settings map so API
+// encoders never observe a concurrent replacement of the live map.
+func (server *Server) SettingsSnapshot() map[string]interface{} {
+	stateMutex.RLock()
+	defer stateMutex.RUnlock()
+	data, err := json.Marshal(server.Settings)
+	if err != nil {
+		log.Printf("Error copying Factorio server settings: %v", err)
+		return map[string]interface{}{}
+	}
+	settings := make(map[string]interface{})
+	if err := json.Unmarshal(data, &settings); err != nil {
+		log.Printf("Error decoding copied Factorio server settings: %v", err)
+		return map[string]interface{}{}
+	}
+	return settings
+}
+
+// UpdateServerSettings commits the on-disk settings (and, for modern
+// Factorio, the separate admin list) before publishing the new in-memory map.
+// The lifecycle mutex closes the middleware check/use gap with server start.
+func (server *Server) UpdateServerSettings(updated map[string]interface{}) error {
+	settingsData, err := json.MarshalIndent(updated, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal server settings: %w", err)
+	}
+
+	serverLifecycleMutex.Lock()
+	defer serverLifecycleMutex.Unlock()
+	stateMutex.RLock()
+	busy := server.Running || server.Stopping || server.starting
+	version := server.Version
+	stateMutex.RUnlock()
+	if busy {
+		return ErrServerActive
+	}
+
+	config := bootstrap.GetConfig()
+	previousSettings, settingsExisted, err := readOptionalFile(config.SettingsFile)
+	if err != nil {
+		return fmt.Errorf("read previous server settings: %w", err)
+	}
+	if err := writeFileAtomically(config.SettingsFile, settingsData, 0644); err != nil {
+		return fmt.Errorf("save server settings: %w", err)
+	}
+
+	if version.Greater(Version{0, 17, 0}) {
+		adminData, marshalErr := json.MarshalIndent(updated["admins"], "", "  ")
+		if marshalErr != nil {
+			rollbackErr := restoreOptionalFile(config.SettingsFile, previousSettings, settingsExisted, 0644)
+			return errors.Join(fmt.Errorf("marshal admin list: %w", marshalErr), rollbackErr)
+		}
+		if writeErr := writeFileAtomically(config.FactorioAdminFile, adminData, 0644); writeErr != nil {
+			rollbackErr := restoreOptionalFile(config.SettingsFile, previousSettings, settingsExisted, 0644)
+			return errors.Join(fmt.Errorf("save admin list: %w", writeErr), rollbackErr)
+		}
+	}
+
+	stateMutex.Lock()
+	server.Settings = updated
+	stateMutex.Unlock()
+	return nil
+}
+
+func readOptionalFile(path string) ([]byte, bool, error) {
+	contents, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	return contents, err == nil, err
+}
+
+func restoreOptionalFile(path string, contents []byte, existed bool, mode os.FileMode) error {
+	if existed {
+		if err := writeFileAtomically(path, contents, mode); err != nil {
+			return fmt.Errorf("restore %s: %w", filepath.Base(path), err)
+		}
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove newly-created %s: %w", filepath.Base(path), err)
+	}
+	return nil
 }
 
 func readFactorioVersionMetadata() (Version, string, error) {
@@ -404,7 +514,12 @@ func GetFactorioServer() (f *Server) {
 // user actions.
 func ReloadFactorioServerProfile(bindIP string, port int, savefile string) error {
 	server := GetFactorioServer()
-	if server.GetRunning() || server.IsStopping() {
+	serverLifecycleMutex.Lock()
+	defer serverLifecycleMutex.Unlock()
+	stateMutex.RLock()
+	busy := server.Running || server.Stopping || server.starting
+	stateMutex.RUnlock()
+	if busy {
 		return errors.New("stop Factorio before reloading a profile")
 	}
 
@@ -458,115 +573,219 @@ func ReloadFactorioServerProfile(bindIP string, port int, savefile string) error
 	return nil
 }
 
+type requestedServerStart struct {
+	BindIP   string
+	Port     int
+	Savefile string
+}
+
+// Start claims the stopped server synchronously and launches exactly the
+// supplied request. A second caller therefore cannot overwrite the first
+// caller's bind/save fields before its goroutine constructs the command.
+func (server *Server) Start(bindIP string, port int, savefile string) (<-chan error, error) {
+	request := &requestedServerStart{BindIP: bindIP, Port: port, Savefile: savefile}
+	return server.start(request)
+}
+
+// Run retains the historical blocking API for internal autostart and tests.
+// Its configuration is captured under the same atomic start claim.
 func (server *Server) Run() error {
-	if !worldGenerationLock.TryLock() {
-		return ErrWorldGenerationBusy
+	result, err := server.start(nil)
+	if err != nil {
+		return err
 	}
-	startupGuardHeld := true
-	defer func() {
-		if startupGuardHeld {
-			worldGenerationLock.Unlock()
-		}
-	}()
-	if server.GetRunning() || server.IsStopping() {
-		return errors.New("Factorio server is already running or stopping")
+	return <-result
+}
+
+func (server *Server) start(request *requestedServerStart) (<-chan error, error) {
+	// Keep active profile directories stable until the child process has been
+	// started (or startup has failed). Profile activation needs the write side.
+	profileDataGate.RLock()
+	serverLifecycleMutex.Lock()
+
+	stateMutex.RLock()
+	busy := server.Running || server.Stopping || server.starting
+	stateMutex.RUnlock()
+	if busy {
+		serverLifecycleMutex.Unlock()
+		profileDataGate.RUnlock()
+		return nil, ErrServerActive
+	}
+	if !worldGenerationLock.TryLock() {
+		serverLifecycleMutex.Unlock()
+		profileDataGate.RUnlock()
+		return nil, ErrWorldGenerationBusy
 	}
 
-	var err error
-	config := bootstrap.GetConfig()
-	data, err := json.MarshalIndent(server.Settings, "", "  ")
+	stateMutex.Lock()
+	// Recheck after claiming the world-generation exclusion in case process
+	// state changed independently while the lock was acquired.
+	if server.Running || server.Stopping || server.starting {
+		stateMutex.Unlock()
+		worldGenerationLock.Unlock()
+		serverLifecycleMutex.Unlock()
+		profileDataGate.RUnlock()
+		return nil, ErrServerActive
+	}
+
+	bindIP := server.BindIP
+	port := server.Port
+	savefile := server.Savefile
+	if request != nil {
+		bindIP = request.BindIP
+		port = request.Port
+		savefile = request.Savefile
+	}
+	if bindIP == "" {
+		bindIP = "0.0.0.0"
+	}
+	if port == 0 {
+		port = 34197
+	}
+	if savefile == "" {
+		savefile = "Load Latest"
+	}
+	settingsData, err := json.MarshalIndent(server.Settings, "", "  ")
 	if err != nil {
-		log.Println("Failed to marshal FactorioServerSettings: ", err)
-	} else {
-		ioutil.WriteFile(config.SettingsFile, data, 0644)
+		stateMutex.Unlock()
+		worldGenerationLock.Unlock()
+		serverLifecycleMutex.Unlock()
+		profileDataGate.RUnlock()
+		return nil, fmt.Errorf("marshal Factorio server settings: %w", err)
+	}
+
+	server.BindIP = bindIP
+	server.Port = port
+	server.Savefile = savefile
+	server.Stopping = false
+	server.startupReady = false
+	server.stopSignaled = false
+	server.starting = true
+	snapshot := serverStartSnapshot{
+		BindIP:       bindIP,
+		Port:         port,
+		Savefile:     savefile,
+		Version:      server.Version,
+		SettingsJSON: append([]byte(nil), settingsData...),
+	}
+	stateMutex.Unlock()
+	serverLifecycleMutex.Unlock()
+
+	result := make(chan error, 1)
+	var releaseOnce sync.Once
+	releaseStartupGuards := func() {
+		releaseOnce.Do(func() {
+			worldGenerationLock.Unlock()
+			profileDataGate.RUnlock()
+		})
+	}
+	go func() {
+		defer close(result)
+		defer releaseStartupGuards()
+		serverBeforeProcessStart(snapshot)
+		result <- server.runStartSnapshot(snapshot, releaseStartupGuards)
+	}()
+	return result, nil
+}
+
+func (server *Server) runStartSnapshot(snapshot serverStartSnapshot, releaseStartupGuards func()) (err error) {
+	publishedRunning := false
+	defer func() {
+		if publishedRunning {
+			return
+		}
+		stateMutex.Lock()
+		server.starting = false
+		stateMutex.Unlock()
+	}()
+
+	config := bootstrap.GetConfig()
+	if err := writeFileAtomically(config.SettingsFile, snapshot.SettingsJSON, 0644); err != nil {
+		return fmt.Errorf("save startup server settings: %w", err)
 	}
 
 	saves, err := ListSaves()
 	if err != nil {
-		log.Println("Failed to get saves list: ", err)
+		return fmt.Errorf("list saves before start: %w", err)
 	}
-
 	if len(saves) == 0 {
 		return errors.New("No savefile exists on the server")
 	}
 
 	args := []string{}
-
-	//The factorio server refenences its executable-path, since we execute the ld.so file and pass the factorio binary as a parameter
-	//the game would use the path to the ld.so file as it's executable path and crash, to prevent this the parameter "--executable-path" is added
+	// The Factorio server references its executable path. When invoking a
+	// custom loader, pass the real binary explicitly so Factorio resolves data.
 	if config.GlibcCustom == "true" {
 		log.Println("Custom glibc selected, glibc.so location:", config.GlibcLocation, " lib location:", config.GlibcLibLoc)
 		args = append(args, "--library-path", config.GlibcLibLoc, config.FactorioBinary, "--executable-path", config.FactorioBinary)
 	}
 
 	args = append(args,
-		"--bind", server.BindIP,
-		"--port", strconv.Itoa(server.Port),
+		"--bind", snapshot.BindIP,
+		"--port", strconv.Itoa(snapshot.Port),
 		"--server-settings", config.SettingsFile,
 		"--rcon-bind", "127.0.0.1:"+strconv.Itoa(config.FactorioRconPort),
 		"--rcon-password", config.FactorioRconPass)
-
-	if (server.Version.Greater(Version{0, 17, 0})) {
+	if snapshot.Version.Greater(Version{0, 17, 0}) {
 		args = append(args, "--server-adminlist", config.FactorioAdminFile)
 	}
 
-	if strings.HasPrefix(server.Savefile, "Load Latest") {
+	if strings.HasPrefix(snapshot.Savefile, "Load Latest") {
 		latestSave, latestErr := GetLatestSave()
 		if latestErr != nil {
 			return fmt.Errorf("find latest save: %w", latestErr)
 		}
 		args = append(args, "--start-server", filepath.Join(config.FactorioSavesDir, latestSave.Name))
 	} else {
-		if err := ValidatePathElement(server.Savefile); err != nil {
+		if err := ValidatePathElement(snapshot.Savefile); err != nil {
 			return fmt.Errorf("invalid save name: %w", err)
 		}
-		args = append(args, "--start-server", filepath.Join(config.FactorioSavesDir, server.Savefile))
+		args = append(args, "--start-server", filepath.Join(config.FactorioSavesDir, snapshot.Savefile))
 	}
-
-	// Write chat log to a different file if requested (if not it will be mixed-in with the default logfile)
 	if config.ChatLogFile != "" {
 		args = append(args, "--console-log", config.ChatLogFile)
 	}
 
+	var command *exec.Cmd
 	if config.GlibcCustom == "true" {
 		log.Printf("Starting Factorio server with custom glibc at %s", config.GlibcLocation)
-		server.Cmd = exec.Command(config.GlibcLocation, args...)
+		command = exec.Command(config.GlibcLocation, args...)
 	} else {
 		log.Printf("Starting Factorio server binary: %s", config.FactorioBinary)
-		server.Cmd = exec.Command(config.FactorioBinary, args...)
+		command = exec.Command(config.FactorioBinary, args...)
 	}
-
-	server.StdOut, err = server.Cmd.StdoutPipe()
+	stdout, err := command.StdoutPipe()
 	if err != nil {
-		log.Printf("Error opening stdout pipe: %s", err)
-		return err
+		return fmt.Errorf("open Factorio stdout: %w", err)
 	}
-
-	server.StdIn, err = server.Cmd.StdinPipe()
+	stdin, err := command.StdinPipe()
 	if err != nil {
-		log.Printf("Error opening stdin pipe: %s", err)
-		return err
+		return fmt.Errorf("open Factorio stdin: %w", err)
 	}
-
-	server.StdErr, err = server.Cmd.StderrPipe()
+	stderr, err := command.StderrPipe()
 	if err != nil {
-		log.Printf("Error opening stderr pipe: %s", err)
-		return err
+		return fmt.Errorf("open Factorio stderr: %w", err)
 	}
-
-	go server.parseRunningCommand(server.StdOut)
-	go server.parseRunningCommand(server.StdErr)
-
-	err = server.Cmd.Start()
-	if err != nil {
+	if err := command.Start(); err != nil {
 		log.Printf("Factorio process failed to start: %s", err)
 		return err
 	}
-	server.SetRunning(true)
-	worldGenerationLock.Unlock()
-	startupGuardHeld = false
 
-	err = server.Cmd.Wait()
+	stateMutex.Lock()
+	server.Cmd = command
+	server.StdOut = stdout
+	server.StdIn = stdin
+	server.StdErr = stderr
+	server.Running = true
+	server.starting = false
+	stateMutex.Unlock()
+	publishedRunning = true
+	server.broadcastStatus()
+	go server.parseRunningCommand(stdout)
+	go server.parseRunningCommand(stderr)
+	releaseStartupGuards()
+
+	err = command.Wait()
 	log.Printf("Factorio process is closed")
 	server.closeRcon()
 	server.SetRunning(false)
@@ -574,14 +793,13 @@ func (server *Server) Run() error {
 		log.Printf("Factorio process exited with error: %s", err)
 		return err
 	}
-
 	return nil
 }
 
 func (server *Server) parseRunningCommand(std io.ReadCloser) (err error) {
 	stdScanner := bufio.NewScanner(std)
 	for stdScanner.Scan() {
-		text := stdScanner.Text()
+		text := redactLogLine(stdScanner.Text())
 
 		log.Printf("Factorio Server: %s", text)
 		if err := server.writeLog(text); err != nil {
@@ -661,25 +879,18 @@ func init() {
 
 // react to websocket control messages and run the command if it is requested
 func serverWebsocketControl(controls websocket.WsControls) {
-	log.Println(controls)
 	if controls.Type == "command" {
 		command := controls.Value
 		server := GetFactorioServer()
 		if server.GetRunning() {
-			log.Printf("Received command: %v", command)
-
-			console := server.getRcon()
-			if console == nil {
-				log.Printf("Cannot send command before the RCON connection is ready")
-				return
-			}
-			reqId, err := console.Write(command)
+			response, err := server.runPersistentRCONCommand(command)
 			if err != nil {
-				log.Printf("Error sending rcon command: %s", err)
+				log.Printf("Error running RCON command: %s", err)
 				return
 			}
-
-			log.Printf("Command sent to Factorio with rcon request id: %v", reqId)
+			if response != "" {
+				websocket.WebsocketHub.GetRoom("gamelog").Send(redactLogLine(response))
+			}
 		}
 	}
 }

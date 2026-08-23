@@ -16,7 +16,7 @@ import (
 )
 
 type Flags struct {
-	ConfFile           string `long:"conf" default:"./conf.json" description:"Specify location of Factorio Server Manager config file." env:"FSM_CONF"`
+	ConfFile           string `long:"conf" default:"./conf.json" description:"Specify location of Factorio Server Control config file." env:"FSM_CONF"`
 	FactorioDir        string `long:"dir" default:"./" description:"Specify location of Factorio directory." env:"FSM_DIR"`
 	ServerIP           string `long:"host" default:"0.0.0.0" description:"Specify IP for webserver to listen on." env:"FSM_SERVER_IP"`
 	FactorioIP         string `long:"game-bind-address" default:"0.0.0.0" description:"Specify IP for Factorio game server to listen on." env:"FSM_FACTORIO_IP"`
@@ -28,7 +28,7 @@ type Flags struct {
 	GlibcCustom        string `long:"glibc-custom" default:"false" description:"By default false, if custom glibc is required set this to true and add glibc-loc and glibc-lib-loc parameters." env:"FSM_GLIBC_CUSTOM"`
 	GlibcLocation      string `long:"glibc-loc" default:"/opt/glibc-2.18/lib/ld-2.18.so" description:"Location glibc ld.so file if needed (ex. /opt/glibc-2.18/lib/ld-2.18.so)." env:"FSM_GLIBC_LOCATION"`
 	GlibcLibLoc        string `long:"glibc-lib-loc" default:"/opt/glibc-2.18/lib" description:"Location of glibc lib folder (ex. /opt/glibc-2.18/lib)." env:"FSM_GLIBC_LIB"`
-	Autostart          string `long:"autostart" default:"false" description:"Autostart factorio server on bootup of FSM, default false [true/false]." env:"FSM_AUTOSTART"`
+	Autostart          string `long:"autostart" default:"false" description:"Start Factorio after Factorio Server Control initializes, default false [true/false]." env:"FSM_AUTOSTART"`
 	ModPackDir         string `long:"mod-pack-dir" default:"./mod_packs" description:"Directory to store mod packs." env:"FSM_MODPACK_DIR"`
 }
 
@@ -99,16 +99,15 @@ func GetConfig() Config {
 }
 
 func (config *Config) updateConfigFile() {
-	file, err := os.Open(config.ConfFile)
-	failOnError(err, "Error opening file")
-	defer file.Close()
-
+	contents, err := os.ReadFile(config.ConfFile)
+	failOnError(err, "Error reading config file")
 	var conf Config
-	decoder := json.NewDecoder(file)
-	decoder.Decode(&conf)
-
-	err = file.Close()
-	failOnError(err, "Error closing json file")
+	err = json.Unmarshal(contents, &conf)
+	failOnError(err, "Error decoding JSON config file")
+	// The config contains the session signing key and localhost RCON password.
+	// Restrict an existing native-deployment file before adding generated secrets.
+	err = os.Chmod(config.ConfFile, 0600)
+	failOnError(err, "Error restricting JSON config file permissions.")
 
 	var resave bool
 
@@ -146,16 +145,13 @@ func (config *Config) updateConfigFile() {
 	}
 
 	if resave {
-		// save json file again
-		file, err = os.Create(config.ConfFile)
-		failOnError(err, "Error opening file for writing")
-		defer file.Close()
-
-		encoder := json.NewEncoder(file)
-		encoder.SetIndent("", "\t")
-		err = encoder.Encode(conf)
+		contents, err = json.MarshalIndent(conf, "", "\t")
 		failOnError(err, "Error encoding JSON config file.")
+		contents = append(contents, '\n')
+		err = os.WriteFile(config.ConfFile, contents, 0600)
+		failOnError(err, "Error writing JSON config file.")
 	}
+
 }
 
 // Loads server configuration files

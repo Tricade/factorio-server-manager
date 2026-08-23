@@ -61,6 +61,9 @@ func TestFindMapSnapshotSourceSaveUsesFreshAutosaveOnlyWhileRunning(t *testing.T
 	latest, err := findMapSnapshotSourceSave(directory, "Load Latest", false)
 	require.NoError(t, err)
 	assert.Equal(t, "other.zip", latest.Name)
+	runningLatest, err := findMapSnapshotSourceSave(directory, "Load Latest", true)
+	require.NoError(t, err)
+	assert.Equal(t, "other.zip", runningLatest.Name, "an older autosave must not replace the save selected by Load Latest")
 }
 
 func TestMapSnapshotFactorioVersionRequiresChartAPI(t *testing.T) {
@@ -187,7 +190,8 @@ func TestMapSnapshotRenderBoundsRejectsIncompleteOrOutOfRangeViews(t *testing.T)
 
 func TestMapSnapshotManifestAcceptsFactorioEmptyTableEncoding(t *testing.T) {
 	var manifest mapSnapshotExporterManifest
-	require.NoError(t, json.Unmarshal([]byte(`{"schema_version":1,"game_tick":1,"game_version":"2.1.14","force":"player","surfaces":{}}`), &manifest))
+	require.NoError(t, json.Unmarshal([]byte(`{"schema_version":1,"game_tick":1,"game_version":"2.1.14","force":"player","players":{},"surfaces":{}}`), &manifest))
+	assert.Empty(t, manifest.Players)
 	assert.Empty(t, manifest.Surfaces)
 }
 
@@ -219,11 +223,28 @@ func TestPersistedMapSnapshotIsProfileScopedAndReadable(t *testing.T) {
 	chunkJSON, err := json.Marshal(mapSnapshotExporterChunk{X: 0, Y: 0, Data: encodeMapSnapshotTestChunk(t, pixels)})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(exportDirectory, "surface-1.jsonl"), append(chunkJSON, '\n'), 0600))
+	entityJSON, err := json.Marshal(MapSnapshotEntity{
+		Name: "assembling-machine-3", Type: "assembling-machine", Direction: 4,
+		BoundingBox: MapSnapshotBoundingBox{
+			LeftTop: MapSnapshotPosition{X: 10.5, Y: -3.5}, RightBottom: MapSnapshotPosition{X: 13.5, Y: -0.5},
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(exportDirectory, "surface-1-entities.jsonl"), append(entityJSON, '\n'), 0600))
 	profile := Profile{ID: "0123456789abcdef"}
 	source := Save{Name: "world.zip", LastMod: generatedAt.Add(-time.Minute)}
 	manifest := mapSnapshotExporterManifest{
 		SchemaVersion: 1, GameTick: 123, GameVersion: "2.1.14", Force: "player",
-		Surfaces: []mapSnapshotExporterSurface{{Index: 1, Name: "Supply Express", SurfaceName: "platform-1", Kind: "platform", ChunkCount: 1, MinX: 0, MinY: 0, MaxX: 0, MaxY: 0, File: "surface-1.jsonl"}},
+		Players: []mapSnapshotExporterPlayer{
+			{Name: "Ada", OnlineTime: 7200},
+			{Name: "Grace", OnlineTime: 10800},
+			{Name: "Linus", OnlineTime: 7200},
+		},
+		Surfaces: []mapSnapshotExporterSurface{{
+			Index: 1, Name: "Supply Express", SurfaceName: "platform-1", Kind: "platform", ChunkCount: 1,
+			MinX: 0, MinY: 0, MaxX: 0, MaxY: 0, File: "surface-1.jsonl",
+			EntityFile: "surface-1-entities.jsonl", EntityCount: 1, EntityTotalCount: 1,
+		}},
 	}
 	require.NoError(t, persistRenderedMapSnapshot(profile, source, manifest, exportDirectory))
 
@@ -235,7 +256,67 @@ func TestPersistedMapSnapshotIsProfileScopedAndReadable(t *testing.T) {
 	assert.Equal(t, "platform-1", snapshot.Surfaces[0].SurfaceName)
 	assert.Equal(t, "platform", snapshot.Surfaces[0].Kind)
 	assert.Equal(t, "surface-1.png", snapshot.Surfaces[0].File)
+	assert.True(t, snapshot.Surfaces[0].ViewBoundsAvailable)
+	assert.Equal(t, 0, snapshot.Surfaces[0].ViewMinTileX)
+	assert.Equal(t, 0, snapshot.Surfaces[0].ViewMinTileY)
+	assert.Equal(t, 31, snapshot.Surfaces[0].ViewMaxTileX)
+	assert.Equal(t, 31, snapshot.Surfaces[0].ViewMaxTileY)
+	assert.Equal(t, 1.0, snapshot.Surfaces[0].PixelsPerTile)
+	assert.True(t, snapshot.Surfaces[0].EntitiesAvailable)
+	assert.Equal(t, 1, snapshot.Surfaces[0].EntityCount)
+	assert.Equal(t, 1, snapshot.Surfaces[0].EntityTotalCount)
+	assert.False(t, snapshot.Surfaces[0].EntityTruncated)
+	assert.Equal(t, "surface-1-entities.jsonl", snapshot.Surfaces[0].EntityFile)
+	require.Len(t, snapshot.Players, 3)
+	assert.Equal(t, MapSnapshotPlayer{Name: "Grace", OnlineTimeTicks: 10800, OnlineTimeSeconds: 180, Rank: 1}, snapshot.Players[0])
+	assert.Equal(t, MapSnapshotPlayer{Name: "Ada", OnlineTimeTicks: 7200, OnlineTimeSeconds: 120, Rank: 2}, snapshot.Players[1])
+	assert.Equal(t, 2, snapshot.Players[2].Rank, "equal playtimes share a rank")
 	assert.FileExists(t, filepath.Join(root, profile.ID, "surface-1.png"))
+	assert.Equal(t, append(entityJSON, '\n'), mustReadMapSnapshotTestFile(t, filepath.Join(root, profile.ID, "surface-1-entities.jsonl")))
+}
+
+func TestMapSnapshotEntityDatasetValidationAndCanonicalCopy(t *testing.T) {
+	entity := MapSnapshotEntity{
+		Name: "transport-belt", Type: "transport-belt", Direction: 8,
+		BoundingBox: MapSnapshotBoundingBox{
+			LeftTop: MapSnapshotPosition{X: -0.4, Y: -0.4}, RightBottom: MapSnapshotPosition{X: 0.4, Y: 0.4},
+		},
+	}
+	line, err := json.Marshal(entity)
+	require.NoError(t, err)
+
+	var destination bytes.Buffer
+	require.NoError(t, processMapSnapshotEntities(bytes.NewReader(append(line, '\n')), 1, &destination))
+	assert.Equal(t, append(line, '\n'), destination.Bytes())
+	assert.Error(t, processMapSnapshotEntities(bytes.NewReader(append(line, '\n')), 2, nil), "the manifest count must match the records")
+
+	invalid := []string{
+		`{"name":"belt","type":"transport-belt","direction":16,"bounding_box":{"left_top":{"x":0,"y":0},"right_bottom":{"x":1,"y":1}}}`,
+		`{"name":"belt","type":"transport-belt","direction":0,"bounding_box":{"left_top":{"x":2,"y":0},"right_bottom":{"x":1,"y":1}}}`,
+		`{"name":"belt","type":"transport-belt","direction":0,"bounding_box":{"left_top":{"x":0,"y":0},"right_bottom":{"x":1,"y":1}},"unexpected":true}`,
+		`{"name":"bad\nname","type":"transport-belt","direction":0,"bounding_box":{"left_top":{"x":0,"y":0},"right_bottom":{"x":1,"y":1}}}`,
+	}
+	for _, value := range invalid {
+		assert.Error(t, processMapSnapshotEntities(strings.NewReader(value+"\n"), 1, nil), value)
+	}
+}
+
+func TestPopulateMapSnapshotSurfaceFilesSupportsLegacyAndValidatesDetails(t *testing.T) {
+	legacy := MapSnapshotSurface{ID: "1", Index: 1, ChunkCount: 1, Width: 32, Height: 32}
+	require.NoError(t, populateMapSnapshotSurfaceFiles(&legacy))
+	assert.Equal(t, "surface-1.png", legacy.File)
+	assert.Empty(t, legacy.EntityFile)
+
+	detailed := MapSnapshotSurface{
+		ID: "2", Index: 2, ChunkCount: 1, Width: 32, Height: 32,
+		ViewBoundsAvailable: true, ViewMinTileX: 0, ViewMinTileY: 0, ViewMaxTileX: 31, ViewMaxTileY: 31, PixelsPerTile: 1,
+		EntitiesAvailable: true, EntityCount: 10, EntityTotalCount: 12, EntityTruncated: true,
+	}
+	require.NoError(t, populateMapSnapshotSurfaceFiles(&detailed))
+	assert.Equal(t, "surface-2-entities.jsonl", detailed.EntityFile)
+
+	detailed.EntityTruncated = false
+	assert.Error(t, populateMapSnapshotSurfaceFiles(&detailed))
 }
 
 func TestMapSnapshotSourceCopyRemainsAValidUnchangedZip(t *testing.T) {

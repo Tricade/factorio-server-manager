@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -35,6 +35,27 @@ type ModPortalRelease struct {
 
 var modPortalHTTPClient = &http.Client{Timeout: 2 * time.Minute}
 var modPortalBaseURL = "https://mods.factorio.com"
+
+const (
+	maximumModPortalListBodyBytes    int64 = 32 * 1024 * 1024
+	maximumModPortalDetailsBodyBytes int64 = 8 * 1024 * 1024
+	maximumModPortalAuthBodyBytes    int64 = 64 * 1024
+	maximumModPortalErrorBodyBytes   int64 = 64 * 1024
+	maximumModPortalListResults            = 50000
+	maximumModPortalReleases               = 10000
+	maximumModPortalDependencies           = 1024
+)
+
+func readBoundedBody(reader io.Reader, maximum int64) ([]byte, error) {
+	contents, err := io.ReadAll(io.LimitReader(reader, maximum+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(contents)) > maximum {
+		return nil, fmt.Errorf("mod portal response exceeds %d bytes", maximum)
+	}
+	return contents, nil
+}
 
 // get all mods uploaded to the factorio modPortal
 func ModPortalList() (interface{}, error, int) {
@@ -67,7 +88,7 @@ func ModPortalList() (interface{}, error, int) {
 	}
 	defer resp.Body.Close()
 
-	text, err := ioutil.ReadAll(resp.Body)
+	text, err := readBoundedBody(resp.Body, maximumModPortalListBodyBytes)
 	if err != nil {
 		return "error", err, http.StatusInternalServerError
 	}
@@ -80,6 +101,9 @@ func ModPortalList() (interface{}, error, int) {
 	err = json.Unmarshal(text, &jsonVal)
 	if err != nil {
 		return "error", err, http.StatusInternalServerError
+	}
+	if results, ok := jsonVal["results"].([]interface{}); ok && len(results) > maximumModPortalListResults {
+		return "error", fmt.Errorf("mod portal response contains more than %d results", maximumModPortalListResults), http.StatusBadGateway
 	}
 
 	jsonVal["factorio_version"] = parsedVersion.FactorioLine()
@@ -106,12 +130,7 @@ func ModPortalModDetails(modId string) (ModPortalStruct, error, int) {
 	}
 	defer resp.Body.Close()
 
-	text, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return mod, err, http.StatusInternalServerError
-	}
-
-	err = json.Unmarshal(text, &mod)
+	text, err := readBoundedBody(resp.Body, maximumModPortalDetailsBodyBytes)
 	if err != nil {
 		return mod, err, http.StatusInternalServerError
 	}
@@ -119,11 +138,25 @@ func ModPortalModDetails(modId string) (ModPortalStruct, error, int) {
 	if resp.StatusCode != http.StatusOK {
 		return ModPortalStruct{}, errors.New(string(text)), resp.StatusCode
 	}
+	err = json.Unmarshal(text, &mod)
+	if err != nil {
+		return mod, err, http.StatusInternalServerError
+	}
+	if len(mod.Releases) > maximumModPortalReleases {
+		return ModPortalStruct{}, fmt.Errorf("mod portal response contains more than %d releases", maximumModPortalReleases), http.StatusBadGateway
+	}
+	for _, release := range mod.Releases {
+		if len(release.InfoJSON.Dependencies) > maximumModPortalDependencies {
+			return ModPortalStruct{}, fmt.Errorf("mod portal release contains more than %d dependencies", maximumModPortalDependencies), http.StatusBadGateway
+		}
+	}
 
-	server := GetFactorioServer()
-
+	snapshot := GetFactorioServer().Snapshot()
 	installedBaseVersion := Version{}
-	_ = installedBaseVersion.UnmarshalText([]byte(server.BaseModVersion))
+	_ = installedBaseVersion.UnmarshalText([]byte(snapshot.BaseModVersion))
+	if installedBaseVersion.Equals(NilVersion) {
+		installedBaseVersion = snapshot.Version
+	}
 	requiredVersion := NilVersion
 
 	for key, release := range mod.Releases {
@@ -148,7 +181,7 @@ func FactorioLogin(username string, password string) (error, int) {
 
 	defer resp.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := readBoundedBody(resp.Body, maximumModPortalAuthBodyBytes)
 	if err != nil {
 		return err, http.StatusInternalServerError
 	}
@@ -163,6 +196,9 @@ func FactorioLogin(username string, password string) (error, int) {
 	err = json.Unmarshal(bodyBytes, &successResponse)
 	if err != nil {
 		return err, http.StatusInternalServerError
+	}
+	if len(successResponse) != 1 || successResponse[0] == "" {
+		return errors.New("Factorio authentication returned an invalid credential response"), http.StatusBadGateway
 	}
 
 	credentials := Credentials{

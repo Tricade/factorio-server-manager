@@ -1,8 +1,49 @@
 package factorio
 
 import (
+	"bytes"
+	"encoding/binary"
 	"testing"
+	"testing/iotest"
 )
+
+func TestReadOptimUintHandlesShortReads(t *testing.T) {
+	value, err := readOptimUint(iotest.OneByteReader(bytes.NewReader([]byte{0x78, 0x56, 0x34, 0x12})), Version{0, 13, 0, 0}, 32)
+	if err != nil {
+		t.Fatalf("read optimized integer: %v", err)
+	}
+	if value != 0x12345678 {
+		t.Fatalf("unexpected optimized integer %#x", value)
+	}
+}
+
+func TestReadStatsUsesDecodedForceID(t *testing.T) {
+	data := make([]byte, 0, 17)
+	count := make([]byte, 4)
+	binary.LittleEndian.PutUint32(count, 1)
+	data = append(data, count...)
+	data = append(data, byte(7))
+	data = append(data, make([]byte, 12)...)
+
+	stats, err := (&SaveHeader{}).readStats(iotest.OneByteReader(bytes.NewReader(data)))
+	if err != nil {
+		t.Fatalf("read stats: %v", err)
+	}
+	if len(stats[7]) != 3 {
+		t.Fatalf("expected three stat maps for force 7, got %#v", stats)
+	}
+	if _, wrongID := stats[0]; wrongID {
+		t.Fatal("stats were assigned to the stale scratch byte instead of the decoded force ID")
+	}
+}
+
+func TestReadStringRejectsOversizedLength(t *testing.T) {
+	length := make([]byte, 4)
+	binary.LittleEndian.PutUint32(length, maximumSaveHeaderStringBytes+1)
+	if _, err := readString(bytes.NewReader(length), Version{0, 15, 0, 0}, false); err == nil {
+		t.Fatal("expected oversized save-header string to be rejected")
+	}
+}
 
 // 1.1.14 changed the format of the saves, so new test has to be done
 func Test1_1_14(t *testing.T) {

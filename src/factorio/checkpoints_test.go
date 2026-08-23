@@ -161,12 +161,13 @@ func TestCheckpointMonitorUsesConfirmedPlayerTransition(t *testing.T) {
 	checkpointNow = time.Now
 
 	var responseMutex sync.Mutex
-	responses := []string{"1", "0", "0"}
-	checkpointRunRCON = func(string) (string, error) {
+	responses := []string{"Online players (1):\n", "Online players (0):\r\n", "Online players (0):\n"}
+	checkpointRunRCON = func(command string) (string, error) {
 		responseMutex.Lock()
 		defer responseMutex.Unlock()
+		assert.Equal(t, "/players online count", command)
 		if len(responses) == 0 {
-			return "0", nil
+			return "Online players (0):\n", nil
 		}
 		response := responses[0]
 		responses = responses[1:]
@@ -190,6 +191,44 @@ func TestCheckpointMonitorUsesConfirmedPlayerTransition(t *testing.T) {
 	state, err := GetCheckpointState()
 	require.NoError(t, err)
 	require.Len(t, state.Checkpoints, 1, "repeated zero-player polls must not create duplicate checkpoints")
+}
+
+func TestParseConnectedPlayerCount(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+		want     int
+	}{
+		{name: "zero with newline", response: "Online players (0):\n", want: 0},
+		{name: "multiple with CRLF", response: "Online players (12):\r\n", want: 12},
+		{name: "case and whitespace", response: "  ONLINE PLAYERS ( 7 )  \r\n", want: 7},
+		{name: "surrounding blank lines", response: "\r\nOnline players (3):\r\n\r\n", want: 3},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			count, err := parseConnectedPlayerCount(test.response)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, count)
+		})
+	}
+}
+
+func TestParseConnectedPlayerCountRejectsUnexpectedResponses(t *testing.T) {
+	responses := []string{
+		"",
+		"0",
+		"Players (0):\n",
+		"Online players (-1):\n",
+		"Online players (1):\nOnline players (0):\n",
+		"Unknown command: players online count\n",
+		"Online players (999999999999999999999999999999):\n",
+	}
+	for _, response := range responses {
+		t.Run(fmt.Sprintf("response_%q", response), func(t *testing.T) {
+			_, err := parseConnectedPlayerCount(response)
+			assert.Error(t, err)
+		})
+	}
 }
 
 func TestCleanStopCheckpointHonorsProfileSetting(t *testing.T) {

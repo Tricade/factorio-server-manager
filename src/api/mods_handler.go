@@ -1,19 +1,15 @@
 package api
 
 import (
-	"archive/zip"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	"github.com/OpenFactorioServerManager/factorio-server-manager/bootstrap"
 	"github.com/OpenFactorioServerManager/factorio-server-manager/factorio"
-	"github.com/OpenFactorioServerManager/factorio-server-manager/lockfile"
 )
 
 func CreateNewMods(w http.ResponseWriter) (modList factorio.Mods, resp interface{}, err error) {
@@ -91,7 +87,11 @@ func ModToggleHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp = fmt.Sprintf("Error in toggling mod in simple list: %s", err)
 		log.Println(resp)
-		w.WriteHeader(http.StatusInternalServerError)
+		if errors.Is(err, factorio.ErrServerActive) {
+			w.WriteHeader(http.StatusLocked)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		return
 	}
 }
@@ -123,7 +123,11 @@ func ModDeleteHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = modList.DeleteMod(data.Name)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		if errors.Is(err, factorio.ErrServerActive) {
+			w.WriteHeader(http.StatusLocked)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		resp = fmt.Sprintf("Error in deleting mod {%s}: %s", data.Name, err)
 		log.Println(resp)
 		return
@@ -147,7 +151,11 @@ func ModDeleteAllHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp = fmt.Sprintf("Error deleting all mods: %s", err)
 		log.Println(resp)
-		w.WriteHeader(http.StatusInternalServerError)
+		if errors.Is(err, factorio.ErrServerActive) {
+			w.WriteHeader(http.StatusLocked)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -256,19 +264,15 @@ func ModUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if fileHeader.Filename == "mod-settings.dat" || fileHeader.Filename == "mod-list.json" {
-		modsDir := filepath.Join(config.FactorioModsDir, fileHeader.Filename)
-		file, err := os.Create(modsDir)
-		if err != nil {
-			resp = fmt.Sprintf("error creating %s: %s", fileHeader.Filename, err)
-			log.Println(resp)
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		_, err = io.Copy(file, formFile)
+		err = factorio.SaveModConfiguration(config.FactorioModsDir, fileHeader.Filename, formFile, config.MaxUploadSize)
 		if err != nil {
 			resp = fmt.Sprintf("error saving %s: %s", fileHeader.Filename, err)
 			log.Println(resp)
-			w.WriteHeader(http.StatusBadRequest)
+			if errors.Is(err, factorio.ErrServerActive) {
+				w.WriteHeader(http.StatusLocked)
+			} else {
+				w.WriteHeader(http.StatusBadRequest)
+			}
 			return
 		}
 	} else {
@@ -282,63 +286,12 @@ func ModUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ModDownloadHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-
-	zipWriter := zip.NewWriter(w)
-	defer zipWriter.Close()
 	config := bootstrap.GetConfig()
-	//iterate over folder and create everything in the zip
-	err = filepath.Walk(config.FactorioModsDir, func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() == false {
-			//Lock the file, that we are want to read
-			err := factorio.FileLock.RLock(path)
-			if err != nil {
-				log.Printf("error locking file for reading, something else has locked it")
-				return err
-			}
-			defer factorio.FileLock.RUnlock(path)
-
-			writer, err := zipWriter.Create(info.Name())
-			if err != nil {
-				log.Printf("error on creating new file inside zip: %s", err)
-				return err
-			}
-
-			file, err := os.Open(path)
-			if err != nil {
-				log.Printf("error on opening modfile: %s", err)
-				return err
-			}
-			defer file.Close()
-
-			_, err = io.Copy(writer, file)
-			if err != nil {
-				log.Printf("error on copying file into zip: %s", err)
-				return err
-			}
-
-			err = file.Close()
-			if err != nil {
-				log.Printf("error closing file: %s", err)
-				return err
-			}
-		}
-
-		return nil
-	})
-	if err == lockfile.ErrorAlreadyLocked {
-		w.WriteHeader(http.StatusLocked)
-		return
-	}
-	if err != nil {
+	if err := serveDirectoryZip(w, config.FactorioModsDir, "all_installed_mods.zip", true); err != nil {
 		log.Printf("error on walking over the mods: %s", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "Unable to build mods archive", http.StatusInternalServerError)
 		return
 	}
-
-	writerHeader := w.Header()
-	writerHeader.Set("Content-Type", "application/zip;charset=UTF-8")
-	writerHeader.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", "all_installed_mods.zip"))
 }
 
 // LoadModsFromSaveHandler returns JSON response with the found mods

@@ -323,15 +323,17 @@ func UpdateProfileStartup(id, bindIP string, port int, selectedSave string) (Pro
 
 	server := GetFactorioServer()
 	previous := server.Snapshot()
-	server.ConfigureStart(bindIP, port, selectedSave)
+	if err := server.ConfigureStart(bindIP, port, selectedSave); err != nil {
+		return ProfileState{}, err
+	}
 	refreshed, err := captureActiveProfile(manifest.Profiles[index])
 	if err != nil {
-		server.ConfigureStart(previous.BindIP, previous.Port, previous.Savefile)
+		_ = server.ConfigureStart(previous.BindIP, previous.Port, previous.Savefile)
 		return ProfileState{}, fmt.Errorf("capture startup settings: %w", err)
 	}
 	manifest.Profiles[index] = refreshed
 	if err := saveProfileManifest(manifest); err != nil {
-		server.ConfigureStart(previous.BindIP, previous.Port, previous.Savefile)
+		_ = server.ConfigureStart(previous.BindIP, previous.Port, previous.Savefile)
 		return ProfileState{}, err
 	}
 	return stateFromManifest(manifest), nil
@@ -553,7 +555,7 @@ func rollbackProfileSwitch(activated []*profileDirectorySwap, current Profile, r
 
 func ensureProfileServerStopped() error {
 	server := GetFactorioServer()
-	if server.GetRunning() || server.IsStopping() || WorldGenerationBusy() {
+	if server.IsBusy() || WorldGenerationBusy() {
 		return ErrProfileServerActive
 	}
 	return nil
@@ -829,12 +831,13 @@ func copyProfileFile(sourcePath, destinationPath string, info os.FileInfo) error
 }
 
 type profileDirectorySwap struct {
-	destination string
-	staging     string
-	backup      string
-	backedUp    []string
-	activated   []string
-	isActive    bool
+	destination      string
+	staging          string
+	backup           string
+	backedUp         []string
+	activated        []string
+	isActive         bool
+	preserveRecovery bool
 }
 
 func prepareProfileSwaps(profileID string) ([]*profileDirectorySwap, error) {
@@ -877,7 +880,10 @@ func (swap *profileDirectorySwap) activate() error {
 	backedUp, err := moveProfileEntries(swap.destination, swap.backup, ignored)
 	swap.backedUp = backedUp
 	if err != nil {
-		_ = restoreProfileEntries(swap.backup, swap.destination, backedUp)
+		if restoreErr := restoreProfileEntries(swap.backup, swap.destination, backedUp); restoreErr != nil {
+			swap.preserveRecovery = true
+			return fmt.Errorf("back up active directory: %w (restore failed: %v; recovery data preserved)", err, restoreErr)
+		}
 		return fmt.Errorf("back up active directory: %w", err)
 	}
 	activated, err := moveProfileEntries(swap.staging, swap.destination, nil)
@@ -902,21 +908,27 @@ func (swap *profileDirectorySwap) rollback() error {
 		rollbackErrors = append(rollbackErrors, fmt.Errorf("restore previous entries: %w", err))
 	}
 	swap.isActive = false
-	return errors.Join(rollbackErrors...)
+	rollbackErr := errors.Join(rollbackErrors...)
+	swap.preserveRecovery = rollbackErr != nil
+	return rollbackErr
 }
 
 func (swap *profileDirectorySwap) commit() error {
 	swap.isActive = false
+	swap.preserveRecovery = false
 	return swap.cleanup()
 }
 
 func (swap *profileDirectorySwap) cleanup() error {
+	if swap.preserveRecovery {
+		return nil
+	}
 	return errors.Join(os.RemoveAll(swap.staging), os.RemoveAll(swap.backup))
 }
 
 func cleanupProfileSwaps(swaps []*profileDirectorySwap) {
 	for _, swap := range swaps {
-		if swap.isActive {
+		if swap.isActive || swap.preserveRecovery {
 			continue
 		}
 		_ = swap.cleanup()

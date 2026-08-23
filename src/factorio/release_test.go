@@ -218,6 +218,24 @@ func TestReplaceReleaseFilesRestoresPreviousReleaseWhenActivationFails(t *testin
 	assert.Equal(t, "old", string(binary))
 }
 
+func TestReplaceReleaseFilesRestoresPreviousReleaseWhenValidationFails(t *testing.T) {
+	sourceDir := t.TempDir()
+	destinationDir := filepath.Join(t.TempDir(), "factorio")
+	require.NoError(t, os.MkdirAll(filepath.Join(sourceDir, "bin"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "bin", "factorio"), []byte("new"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(destinationDir, "bin"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(destinationDir, "bin", "factorio"), []byte("old"), 0755))
+
+	err := replaceReleaseFilesValidated(sourceDir, destinationDir, func() error {
+		return errors.New("simulated metadata persistence failure")
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "previous release restored")
+	binary, readErr := os.ReadFile(filepath.Join(destinationDir, "bin", "factorio"))
+	require.NoError(t, readErr)
+	assert.Equal(t, "old", string(binary))
+}
+
 func TestReplaceReleaseFilesRestoresPreviousReleaseWhenBackupFailsPartway(t *testing.T) {
 	sourceDir := t.TempDir()
 	destinationDir := filepath.Join(t.TempDir(), "factorio")

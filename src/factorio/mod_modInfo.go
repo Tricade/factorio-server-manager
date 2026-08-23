@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -115,12 +116,11 @@ func (modInfoList *ModInfoList) listInstalledMods() error {
 				break
 			}
 
-			server := GetFactorioServer()
-
+			snapshot := GetFactorioServer().Snapshot()
 			// check both the factorio-version and the base mod dependency
-			modInfo.Compatibility = server.Version.GEC(modInfo.FactorioVersion)
+			modInfo.Compatibility = snapshot.Version.GEC(modInfo.FactorioVersion)
 			if modInfo.Compatibility && !base.Equals(NilVersion) {
-				modInfo.Compatibility = server.Version.Compatible(base, op)
+				modInfo.Compatibility = snapshot.Version.Compatible(base, op)
 			}
 
 			modInfoList.Mods = append(modInfoList.Mods, modInfo)
@@ -206,6 +206,13 @@ func (modInfo *ModInfo) getModInfo(reader *zip.Reader) error {
 }
 
 func (modInfoList *ModInfoList) createMod(modName string, fileName string, modFile io.Reader) error {
+	return modInfoList.createModWithLimit(modName, fileName, modFile, 0)
+}
+
+func (modInfoList *ModInfoList) createModWithLimit(modName string, fileName string, modFile io.Reader, maximumBytes int64) error {
+	if err := ValidatePathElement(modName); err != nil {
+		return errors.New("invalid mod name: " + err.Error())
+	}
 	if err := ValidatePathElement(fileName); err != nil {
 		return errors.New("invalid mod filename: " + err.Error())
 	}
@@ -222,8 +229,7 @@ func (modInfoList *ModInfoList) createMod(modName string, fileName string, modFi
 	temporaryPath := newFile.Name()
 	defer os.Remove(temporaryPath)
 
-	_, err = io.Copy(newFile, modFile)
-	if err != nil {
+	if err = copyWithHardLimit(newFile, modFile, maximumBytes); err != nil {
 		newFile.Close()
 		log.Printf("error on copying file to disk: %s", err)
 		return err
@@ -238,8 +244,25 @@ func (modInfoList *ModInfoList) createMod(modName string, fileName string, modFi
 		return err
 	}
 
+	archive, err := zip.OpenReader(temporaryPath)
+	if err != nil {
+		return fmt.Errorf("validate downloaded mod archive: %w", err)
+	}
+	var stagedInfo ModInfo
+	metadataErr := stagedInfo.getModInfo(&archive.Reader)
+	closeErr := archive.Close()
+	if metadataErr != nil {
+		return fmt.Errorf("validate downloaded mod metadata: %w", metadataErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close downloaded mod archive: %w", closeErr)
+	}
+	if stagedInfo.Name != modName {
+		return fmt.Errorf("downloaded mod metadata names %q, expected %q", stagedInfo.Name, modName)
+	}
+
 	FileLock.LockW(filePath)
-	err = os.Rename(temporaryPath, filePath)
+	err = replaceFileWithRollback(temporaryPath, filePath)
 	FileLock.Unlock(filePath)
 	if err != nil {
 		return err

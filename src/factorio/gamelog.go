@@ -12,7 +12,7 @@ import (
 const logTailLimit = 500
 
 var secretFlagPattern = regexp.MustCompile(`(?i)((?:"?--(?:password|rcon-password|token|server-token|game-password|rcon-pass)"?)\s+)(?:"[^"]*"|'[^']*'|[^\s]+)`)
-var secretAssignmentPattern = regexp.MustCompile(`(?i)((?:password|token|secret|rcon[_-]?pass(?:word)?)\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)`)
+var secretAssignmentPattern = regexp.MustCompile(`(?i)((?:"?(?:password|token|secret|rcon[_-]?pass(?:word)?)"?)\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)`)
 var managerRCONConnectionPattern = regexp.MustCompile(`RemoteCommandProcessor\.cpp:\d+:\s+New RCON connection from IP ADDR:\(\{(?:127\.0\.0\.1|\[?::1\]?):\d+\}\)`)
 
 func TailLog() ([]string, error) {

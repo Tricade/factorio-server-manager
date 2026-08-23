@@ -3,9 +3,10 @@ package factorio
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 )
 
@@ -38,7 +39,7 @@ func newModSimpleList(destination string) (ModSimpleList, error) {
 func (modSimpleList *ModSimpleList) listInstalledMods() error {
 	var err error
 
-	file, err := ioutil.ReadFile(modSimpleList.Destination + "/mod-list.json")
+	file, err := os.ReadFile(filepath.Join(modSimpleList.Destination, "mod-list.json"))
 	if os.IsNotExist(err) {
 		log.Println("no mod-list.json found ... create new one ...")
 
@@ -71,13 +72,12 @@ func (modSimpleList *ModSimpleList) listInstalledMods() error {
 }
 
 func (modSimpleList *ModSimpleList) saveModInfoJson() error {
-	var err error
-
 	//build json of current state
-	newJson, _ := json.MarshalIndent(modSimpleList, "", "    ")
-
-	err = ioutil.WriteFile(modSimpleList.Destination+"/mod-list.json", newJson, 0664)
+	newJSON, err := json.MarshalIndent(modSimpleList, "", "    ")
 	if err != nil {
+		return fmt.Errorf("encode mod-list.json: %w", err)
+	}
+	if err := writeFileAtomically(filepath.Join(modSimpleList.Destination, "mod-list.json"), newJSON, 0664); err != nil {
 		log.Printf("error when writing new mod-list: %s", err)
 		return err
 	}
@@ -148,6 +148,12 @@ func (modSimpleList *ModSimpleList) SetModEnabled(modName string, enabled bool) 
 }
 
 func (modSimpleList *ModSimpleList) SetModsEnabled(states map[string]bool) error {
+	unlockMutation, err := lockActiveModMutation(modSimpleList.Destination)
+	if err != nil {
+		return err
+	}
+	defer unlockMutation()
+
 	pending := make(map[string]bool, len(states))
 	for name, enabled := range states {
 		pending[name] = enabled
@@ -181,14 +187,12 @@ func (modSimpleList *ModSimpleList) IsEnabled(modName string) bool {
 }
 
 func (modSimpleList *ModSimpleList) ToggleMod(modName string) (error, bool) {
-	var err error
 	var newEnabled bool
 
 	var found bool
-	for index, mod := range modSimpleList.Mods {
+	for _, mod := range modSimpleList.Mods {
 		if mod.Name == modName {
-			newEnabled = !modSimpleList.Mods[index].Enabled
-			modSimpleList.Mods[index].Enabled = newEnabled
+			newEnabled = !mod.Enabled
 			found = true
 			break
 		}
@@ -198,7 +202,7 @@ func (modSimpleList *ModSimpleList) ToggleMod(modName string) (error, bool) {
 		return errors.New("mod is not installed"), newEnabled
 	}
 
-	err = modSimpleList.saveModInfoJson()
+	err := modSimpleList.SetModEnabled(modName, newEnabled)
 	if err != nil {
 		log.Printf("error on savin new ModSimpleList: %s", err)
 		return err, newEnabled

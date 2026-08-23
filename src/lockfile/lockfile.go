@@ -22,8 +22,8 @@ type Lock struct {
 var ErrorLocking error = errors.New("error locking file")
 var ErrorAlreadyLocked error = errors.New("file already locked by another routine")
 
-func NewLock() FileLock {
-	lock := FileLock{
+func NewLock() *FileLock {
+	lock := &FileLock{
 		Locks: make(map[string]Lock),
 	}
 	return lock

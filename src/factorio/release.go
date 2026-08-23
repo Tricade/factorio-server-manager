@@ -363,13 +363,40 @@ func installRelease(downloadTarget, persistedTarget string, requiredBuiltIns []s
 	factorioProgramFilesGate.Lock()
 	defer factorioProgramFilesGate.Unlock()
 
-	if err := replaceReleaseFiles(sourceDir, bootstrap.GetConfig().FactorioDir); err != nil {
+	runtimeStateSnapshot, err := snapshotRuntimeStateFiles()
+	if err != nil {
 		return err
 	}
-	if err := RefreshFactorioVersion(); err != nil {
-		return fmt.Errorf("reload installed Factorio version: %w", err)
+	persistAttempted := false
+	persistSucceeded := false
+	installErr := replaceReleaseFilesValidated(sourceDir, bootstrap.GetConfig().FactorioDir, func() error {
+		if err := RefreshFactorioVersion(); err != nil {
+			return fmt.Errorf("reload installed Factorio version: %w", err)
+		}
+		persistAttempted = true
+		if err := persistRuntimeState(normalizedPersistedTarget, installedVersion); err != nil {
+			return err
+		}
+		persistSucceeded = true
+		return nil
+	})
+	if installErr == nil || persistSucceeded {
+		return installErr
 	}
-	return persistRuntimeState(normalizedPersistedTarget, installedVersion)
+
+	var recoveryErrors []error
+	if persistAttempted {
+		if err := restoreRuntimeStateFiles(runtimeStateSnapshot); err != nil {
+			recoveryErrors = append(recoveryErrors, fmt.Errorf("restore previous runtime metadata: %w", err))
+		}
+	}
+	if err := RefreshFactorioVersion(); err != nil {
+		recoveryErrors = append(recoveryErrors, fmt.Errorf("reload restored Factorio version: %w", err))
+	}
+	if recoveryErr := errors.Join(recoveryErrors...); recoveryErr != nil {
+		return fmt.Errorf("%w (recovery failed: %v)", installErr, recoveryErr)
+	}
+	return installErr
 }
 
 func releaseVersionFromDirectory(directory string) (string, error) {
@@ -415,6 +442,14 @@ func validateRequiredBuiltInMods(sourceDir string, requiredBuiltIns []string) er
 // in container deployments it is commonly a bind mount or Docker volume mount, and
 // Linux rejects renaming a mount point with EBUSY.
 func replaceReleaseFiles(sourceDir, destinationDir string) error {
+	return replaceReleaseFilesValidated(sourceDir, destinationDir, nil)
+}
+
+// replaceReleaseFilesValidated retains the previous program tree until the
+// caller has reloaded the new binary metadata and persisted its runtime state.
+// A post-activation failure therefore rolls the program files back as part of
+// the same transaction.
+func replaceReleaseFilesValidated(sourceDir, destinationDir string, validate func() error) error {
 	if err := os.MkdirAll(destinationDir, 0755); err != nil {
 		return fmt.Errorf("create Factorio destination directory: %w", err)
 	}
@@ -457,6 +492,15 @@ func replaceReleaseFiles(sourceDir, destinationDir string) error {
 			return fmt.Errorf("activate new Factorio release: %w (rollback failed: %v)", err, rollbackErr)
 		}
 		return fmt.Errorf("activate new Factorio release: %w (previous release restored)", err)
+	}
+	if validate != nil {
+		if err := validate(); err != nil {
+			rollbackErr := rollbackReleaseActivation(destinationDir, stagingDir, backupDir, activatedEntries, backedUpEntries)
+			if rollbackErr != nil {
+				return fmt.Errorf("validate new Factorio release: %w (rollback failed: %v)", err, rollbackErr)
+			}
+			return fmt.Errorf("validate new Factorio release: %w (previous release restored)", err)
+		}
 	}
 
 	if err := os.RemoveAll(backupDir); err != nil {
