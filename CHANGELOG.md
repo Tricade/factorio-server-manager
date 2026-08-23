@@ -3,6 +3,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+- Release automation now detects hidden drafts by release ID and can safely resume a fully verified staged release after an interrupted publication.
+
 ## [0.16.0] - 2026-08-23
 
 ### Highlights

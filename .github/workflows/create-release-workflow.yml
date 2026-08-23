@@ -7,6 +7,11 @@ on:
         description: Existing three-part SemVer tag to publish (for example, 0.16.0)
         required: true
         type: string
+      resume_staged:
+        description: Resume a verified hidden draft and immutable image after an interrupted publication
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -21,6 +26,7 @@ env:
 jobs:
   build-and-verify:
     name: Build and verify immutable inputs
+    if: ${{ ! inputs.resume_staged }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -329,6 +335,7 @@ jobs:
   publish:
     name: Publish verified image and release
     needs: build-and-verify
+    if: ${{ ! inputs.resume_staged }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -382,15 +389,14 @@ jobs:
           test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$EXPECTED_COMMIT"
           test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
 
-          release_error=$(mktemp)
-          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" >/dev/null 2>"$release_error"; then
-            echo "A release now exists for $RELEASE_TAG; refusing to replace it." >&2
+          existing_release_ids=$(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id"
+          )
+          if test -n "$existing_release_ids"; then
+            echo "A release or draft now exists for $RELEASE_TAG; refusing to replace it." >&2
             exit 1
           fi
-          grep -Fq 'HTTP 404' "$release_error" || {
-            cat "$release_error" >&2
-            exit 1
-          }
 
           image_error=$(mktemp)
           if docker buildx imagetools inspect "$IMAGE:$RELEASE_TAG" >/dev/null 2>"$image_error"; then
@@ -592,3 +598,241 @@ jobs:
             <<<"$published_json" >/dev/null
           test "$(docker buildx imagetools inspect "$IMAGE:latest" |
             awk '$1 == "Digest:" { print $2; exit }')" = "$RELEASE_DIGEST"
+
+  resume-staged:
+    name: Verify and resume staged release
+    if: ${{ inputs.resume_staged }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Validate recovery dispatch
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main || {
+            echo "Run this workflow from the protected main branch." >&2
+            exit 1
+          }
+          [[ "$RELEASE_TAG" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo "The tag must be a strict three-part SemVer without a v prefix." >&2
+            exit 1
+          }
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify staged artifacts and finish publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          notes_file="RELEASE-NOTES-$RELEASE_TAG.md"
+          tag_ref="refs/tags/$RELEASE_TAG"
+          expected_title="Factorio Server Control $RELEASE_TAG"
+
+          remote_tag_sha=$(git ls-remote --exit-code --refs origin "$tag_ref" |
+            awk 'NR == 1 { print $1 }')
+          test -n "$remote_tag_sha"
+          test "$(git rev-parse "$tag_ref")" = "$remote_tag_sha"
+          tag_commit=$(git rev-parse "$tag_ref^{commit}")
+          test "$(git rev-parse HEAD)" = "$tag_commit"
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          git merge-base --is-ancestor "$tag_commit" refs/remotes/origin/main
+          test -z "$(git status --porcelain)"
+
+          test "$(node -p "require('./package.json').version")" = "$RELEASE_TAG"
+          test "$(node -p "require('./package-lock.json').version")" = "$RELEASE_TAG"
+          test "$(node -p "require('./package-lock.json').packages[''].version")" = "$RELEASE_TAG"
+          test -f "$notes_file"
+          grep -Eq "^## \[$RELEASE_TAG\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md
+          grep -Fq "<Changes>$RELEASE_TAG:" templates/factorio-server-manager.xml
+
+          draft_release_ids=$(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq ".[] | select(.tag_name == \"$RELEASE_TAG\" and .draft == true) | .id"
+          )
+          draft_release_count=$(printf '%s\n' "$draft_release_ids" |
+            awk 'NF { count++ } END { print count + 0 }')
+          test "$draft_release_count" -eq 1 || {
+            echo "Expected exactly one staged draft for $RELEASE_TAG, found $draft_release_count." >&2
+            exit 1
+          }
+          draft_release_id=$(printf '%s\n' "$draft_release_ids" | awk 'NF { print; exit }')
+          [[ "$draft_release_id" =~ ^[0-9]+$ ]]
+
+          release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/$draft_release_id")
+          jq -e --arg tag "$RELEASE_TAG" --arg title "$expected_title" '
+            .tag_name == $tag and
+            .name == $title and
+            .draft == true and
+            .prerelease == false and
+            (.assets | length == 3) and
+            ([.assets[].name] | sort == ([
+              "SHA256SUMS",
+              "factorio-server-manager-linux-" + $tag + ".zip",
+              "factorio-server-manager-windows-" + $tag + ".zip"
+            ] | sort)) and
+            ([.assets[] | .state == "uploaded" and .size > 0] | all) and
+            ([.assets[].digest | test("^sha256:[0-9a-f]{64}$")] | all)
+          ' <<<"$release_json" >/dev/null
+          diff -u "$notes_file" <(jq -j .body <<<"$release_json")
+
+          verification_dir=$(mktemp -d)
+          trap 'rm -rf "$verification_dir"' EXIT
+          while IFS=$'\t' read -r asset_id asset_name api_digest; do
+            [[ "$asset_id" =~ ^[0-9]+$ ]]
+            test -n "$asset_name"
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+              > "$verification_dir/$asset_name"
+            actual_digest="sha256:$(sha256sum "$verification_dir/$asset_name" | awk '{ print $1 }')"
+            test "$actual_digest" = "$api_digest"
+          done < <(jq -r '.assets[] | [.id, .name, .digest] | @tsv' <<<"$release_json")
+
+          cd "$verification_dir"
+          sha256sum --check SHA256SUMS
+          test "$(wc -l < SHA256SUMS)" -eq 2
+          linux_zip="factorio-server-manager-linux-$RELEASE_TAG.zip"
+          windows_zip="factorio-server-manager-windows-$RELEASE_TAG.zip"
+          linux_entries="$verification_dir/linux-entries.txt"
+          windows_entries="$verification_dir/windows-entries.txt"
+          unzip -Z1 "$linux_zip" > "$linux_entries"
+          unzip -Z1 "$windows_zip" > "$windows_entries"
+          for common_file in \
+            factorio-server-manager/LICENSE \
+            factorio-server-manager/README.md \
+            factorio-server-manager/CHANGELOG.md \
+            factorio-server-manager/conf.json \
+            factorio-server-manager/app/index.html \
+            factorio-server-manager/app/bundle.js \
+            factorio-server-manager/app/style.css \
+            factorio-server-manager/app/favicon.ico \
+            factorio-server-manager/app/favicon-32x32.png \
+            factorio-server-manager/app/apple-touch-icon.png; do
+            grep -Fqx "$common_file" "$linux_entries"
+            grep -Fqx "$common_file" "$windows_entries"
+          done
+          grep -Fqx factorio-server-manager/factorio-server-manager "$linux_entries"
+          grep -Fqx factorio-server-manager/factorio-server-manager.exe "$windows_entries"
+          grep -Fqx factorio-server-manager/app/images/brand-icon.png "$linux_entries"
+          grep -Fqx factorio-server-manager/app/images/brand-icon.png "$windows_entries"
+          if grep -Eq '(^|/)(\.git|node_modules)(/|$)' "$linux_entries"; then
+            echo "Linux archive contains a forbidden source directory." >&2
+            exit 1
+          fi
+          if grep -Eq '(^|/)(\.git|node_modules)(/|$)' "$windows_entries"; then
+            echo "Windows archive contains a forbidden source directory." >&2
+            exit 1
+          fi
+          mkdir "$verification_dir/extracted"
+          unzip -q "$linux_zip" -d "$verification_dir/extracted"
+          test -x "$verification_dir/extracted/factorio-server-manager/factorio-server-manager"
+
+          cd "$GITHUB_WORKSPACE"
+          release_digest=$(docker buildx imagetools inspect "$image:$RELEASE_TAG" |
+            awk '$1 == "Digest:" { print $2; exit }')
+          [[ "$release_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          docker pull --platform linux/amd64 "$image@$release_digest"
+          test "$(docker image inspect "$image@$release_digest" --format '{{index .Config.Labels "org.opencontainers.image.title"}}')" = 'Factorio Server Control'
+          test "$(docker image inspect "$image@$release_digest" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "$RELEASE_TAG"
+          test "$(docker image inspect "$image@$release_digest" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$tag_commit"
+          test "$(docker image inspect "$image@$release_digest" --format '{{index .Config.Labels "org.opencontainers.image.source"}}')" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          test "$(docker image inspect "$image@$release_digest" --format '{{json .Config.Volumes}}')" = null
+          test "$(docker image inspect "$image@$release_digest" --format '{{json .Config.Healthcheck}}')" != null
+
+          set +e
+          missing_mount_output=$(docker run --rm --platform linux/amd64 "$image@$release_digest" 2>&1)
+          missing_mount_status=$?
+          set -e
+          test "$missing_mount_status" -ne 0
+          grep -F '/opt/fsm-data is not a persistent bind mount or named volume' <<<"$missing_mount_output"
+          docker run --rm --platform linux/amd64 \
+            --mount type=tmpfs,destination=/opt/fsm-data \
+            --mount type=tmpfs,destination=/opt/factorio/saves \
+            --mount type=tmpfs,destination=/opt/factorio/mods \
+            --mount type=tmpfs,destination=/opt/factorio/config \
+            "$image@$release_digest" true
+
+          latest_release_error=$(mktemp)
+          if latest_release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" 2>"$latest_release_error"); then
+            previous_tag=$(jq -r .tag_name <<<"$latest_release_json")
+            [[ "$previous_tag" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+            IFS=. read -r old_major old_minor old_patch <<<"$previous_tag"
+            IFS=. read -r new_major new_minor new_patch <<<"$RELEASE_TAG"
+            (( new_major > old_major )) ||
+              (( new_major == old_major && new_minor > old_minor )) ||
+              (( new_major == old_major && new_minor == old_minor && new_patch > old_patch ))
+            previous_digest=$(docker buildx imagetools inspect "$image:$previous_tag" |
+              awk '$1 == "Digest:" { print $2; exit }')
+            current_latest_digest=$(docker buildx imagetools inspect "$image:latest" |
+              awk '$1 == "Digest:" { print $2; exit }')
+            if test "$current_latest_digest" != "$previous_digest" &&
+              test "$current_latest_digest" != "$release_digest"; then
+              echo "$image:latest matches neither $previous_tag nor the staged release." >&2
+              exit 1
+            fi
+          else
+            grep -Fq 'HTTP 404' "$latest_release_error"
+            previous_tag=''
+            latest_image_error=$(mktemp)
+            if current_latest_digest=$(docker buildx imagetools inspect "$image:latest" 2>"$latest_image_error" |
+              awk '$1 == "Digest:" { print $2; exit }'); then
+              test "$current_latest_digest" = "$release_digest"
+            else
+              grep -Eiq 'manifest unknown|not found|no such manifest' "$latest_image_error"
+              current_latest_digest=''
+            fi
+          fi
+
+          test "$(git ls-remote --exit-code --refs origin "$tag_ref" |
+            awk 'NR == 1 { print $1 }')" = "$remote_tag_sha"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$draft_release_id" --jq .draft)" = true
+          if test -n "$previous_tag"; then
+            test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" = "$previous_tag"
+          fi
+
+          if test "$current_latest_digest" != "$release_digest"; then
+            docker buildx imagetools create \
+              --tag "$image:latest" \
+              "$image@$release_digest"
+          fi
+          test "$(docker buildx imagetools inspect "$image:latest" |
+            awk '$1 == "Digest:" { print $2; exit }')" = "$release_digest"
+
+          test "$(git ls-remote --exit-code --refs origin "$tag_ref" |
+            awk 'NR == 1 { print $1 }')" = "$remote_tag_sha"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$draft_release_id" --jq .draft)" = true
+          published_json=$(
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$draft_release_id" \
+              -F draft=false \
+              -f make_latest=true
+          )
+          jq -e --arg tag "$RELEASE_TAG" '
+            .tag_name == $tag and
+            .draft == false and
+            .prerelease == false and
+            (.assets | length == 3)
+          ' <<<"$published_json" >/dev/null
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" = "$RELEASE_TAG"
+          test "$(docker buildx imagetools inspect "$image:latest" |
+            awk '$1 == "Digest:" { print $2; exit }')" = "$release_digest"
