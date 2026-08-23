@@ -277,6 +277,13 @@ jobs:
 
           linux_zip="factorio-server-manager-linux-$RELEASE_TAG.zip"
           windows_zip="factorio-server-manager-windows-$RELEASE_TAG.zip"
+          verification_dir=$(mktemp -d)
+          trap 'rm -rf "$verification_dir"' EXIT
+          linux_entries="$verification_dir/linux-entries.txt"
+          windows_entries="$verification_dir/windows-entries.txt"
+          unzip -Z1 "$linux_zip" > "$linux_entries"
+          unzip -Z1 "$windows_zip" > "$windows_entries"
+
           for common_file in \
             factorio-server-manager/LICENSE \
             factorio-server-manager/README.md \
@@ -288,18 +295,24 @@ jobs:
             factorio-server-manager/app/favicon.ico \
             factorio-server-manager/app/favicon-32x32.png \
             factorio-server-manager/app/apple-touch-icon.png; do
-            unzip -Z1 "$linux_zip" | grep -Fqx "$common_file"
-            unzip -Z1 "$windows_zip" | grep -Fqx "$common_file"
+            grep -Fqx "$common_file" "$linux_entries"
+            grep -Fqx "$common_file" "$windows_entries"
           done
-          unzip -Z1 "$linux_zip" | grep -Fqx factorio-server-manager/factorio-server-manager
-          unzip -Z1 "$windows_zip" | grep -Fqx factorio-server-manager/factorio-server-manager.exe
-          unzip -Z1 "$linux_zip" | grep -Eq '^factorio-server-manager/app/images/brand/.+'
-          unzip -Z1 "$windows_zip" | grep -Eq '^factorio-server-manager/app/images/brand/.+'
-          ! unzip -Z1 "$linux_zip" | grep -Eq '(^|/)(\.git|node_modules)(/|$)'
-          ! unzip -Z1 "$windows_zip" | grep -Eq '(^|/)(\.git|node_modules)(/|$)'
+          grep -Fqx factorio-server-manager/factorio-server-manager "$linux_entries"
+          grep -Fqx factorio-server-manager/factorio-server-manager.exe "$windows_entries"
+          grep -Fqx factorio-server-manager/app/images/brand-icon.png "$linux_entries"
+          grep -Fqx factorio-server-manager/app/images/brand-icon.png "$windows_entries"
+          if grep -Eq '(^|/)(\.git|node_modules)(/|$)' "$linux_entries"; then
+            echo "Linux archive contains a forbidden source directory." >&2
+            exit 1
+          fi
+          if grep -Eq '(^|/)(\.git|node_modules)(/|$)' "$windows_entries"; then
+            echo "Windows archive contains a forbidden source directory." >&2
+            exit 1
+          fi
 
-          extracted=$(mktemp -d)
-          trap 'rm -rf "$extracted"' EXIT
+          extracted="$verification_dir/extracted"
+          mkdir "$extracted"
           unzip -q "$linux_zip" -d "$extracted"
           test -x "$extracted/factorio-server-manager/factorio-server-manager"
 
@@ -503,10 +516,16 @@ jobs:
               awk '$1 == "Digest:" { print $2; exit }')" = "$EXPECTED_PREVIOUS_DIGEST"
           else
             latest_release_error=$(mktemp)
-            ! gh api "repos/$GITHUB_REPOSITORY/releases/latest" >/dev/null 2>"$latest_release_error"
+            if gh api "repos/$GITHUB_REPOSITORY/releases/latest" >/dev/null 2>"$latest_release_error"; then
+              echo "A latest GitHub release appeared while publishing." >&2
+              exit 1
+            fi
             grep -Fq 'HTTP 404' "$latest_release_error"
             latest_image_error=$(mktemp)
-            ! docker buildx imagetools inspect "$IMAGE:latest" >/dev/null 2>"$latest_image_error"
+            if docker buildx imagetools inspect "$IMAGE:latest" >/dev/null 2>"$latest_image_error"; then
+              echo "A latest container image appeared while publishing." >&2
+              exit 1
+            fi
             grep -Eiq 'manifest unknown|not found|no such manifest' "$latest_image_error"
           fi
 
