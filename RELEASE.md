@@ -2,7 +2,7 @@
 
 Factorio Server Control releases are user-facing changes, not generated commit lists. Prepare the notes while the release change is still reviewable, and describe observable behavior, upgrade impact and recovery steps in plain language.
 
-The prepared source for the next minor release is `RELEASE-NOTES-0.16.0.md`. Keep the file publish-ready; the workflow treats draft markers, missing sections and mismatched versions as release blockers.
+The prepared source for the next minor release is `RELEASE-NOTES-0.17.0.md`. Keep the file publish-ready; the workflow treats draft markers, missing sections and mismatched versions as release blockers.
 
 ## Release checklist
 
