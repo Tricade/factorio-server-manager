@@ -35,7 +35,7 @@ init_config() {
       | .factorio_credentials_file = "/opt/fsm-data/factorio.auth"
       | .mod_pack_dir = "/opt/fsm-data/mod_packs"'
 
-    if [ -n "$RCON_PASS" ]; then
+    if [ -n "${RCON_PASS:-}" ]; then
         echo "Using the configured Factorio RCON password"
         jq --arg rcon "$RCON_PASS" "$jq_filter | .rcon_pass = \$rcon" \
             /opt/fsm/conf.json >/opt/fsm-data/conf.json
@@ -44,6 +44,30 @@ init_config() {
     fi
 
     chmod 0600 /opt/fsm-data/conf.json
+}
+
+configure_cookie_security() {
+    secure_cookie=${FSM_COOKIE_SECURE:-}
+    if [ -z "$secure_cookie" ]; then
+        return
+    fi
+    case "$secure_cookie" in
+        true|false) ;;
+        *)
+            echo "ERROR: FSM_COOKIE_SECURE must be true or false." >&2
+            exit 1
+            ;;
+    esac
+
+    temporary=$(mktemp /opt/fsm-data/.conf-new.XXXXXX)
+    if ! jq --argjson secure "$secure_cookie" '.secure = $secure' \
+        /opt/fsm-data/conf.json >"$temporary"; then
+        rm -f "$temporary"
+        echo "ERROR: unable to update the manager session-cookie setting." >&2
+        exit 1
+    fi
+    chmod 0600 "$temporary"
+    mv "$temporary" /opt/fsm-data/conf.json
 }
 
 install_game() {
@@ -86,11 +110,40 @@ install_game() {
 		download_target=$release_target
 	fi
 	echo "Installing Factorio ${download_target}; selected target is ${release_target}"
-	curl --fail --show-error --location --retry 3 \
+	release_archive=$(mktemp /tmp/factorio-release.XXXXXX)
+	install_stage=$(mktemp -d /tmp/factorio-install.XXXXXX)
+	curl --fail --show-error --location --retry 3 --retry-all-errors \
+		--proto '=https' --proto-redir '=https' --tlsv1.2 \
 		"https://www.factorio.com/get-download/${download_target}/headless/linux64" \
-		--output /tmp/factorio_release.tar.xz
-	tar -xJf /tmp/factorio_release.tar.xz -C /opt
-	rm /tmp/factorio_release.tar.xz
+		--output "$release_archive"
+	tar -xJf "$release_archive" -C "$install_stage"
+	staged_binary="$install_stage/factorio/bin/x64/factorio"
+	if [ ! -x "$staged_binary" ]; then
+		rm -rf "$release_archive" "$install_stage"
+		echo "ERROR: downloaded Factorio archive does not contain an executable headless server." >&2
+		exit 1
+	fi
+	staged_version=$(read_factorio_version "$staged_binary")
+	case "$download_target" in
+		stable|latest) ;;
+		*)
+			if [ "$staged_version" != "$download_target" ]; then
+				rm -rf "$release_archive" "$install_stage"
+				echo "ERROR: requested Factorio ${download_target}, but the archive contains ${staged_version}." >&2
+				exit 1
+			fi
+			;;
+	esac
+
+	# Keep persistent game data authoritative. Copy the validated program tree
+	# first and install the executable last, so an interrupted installation is
+	# retried instead of treating a partial tree as complete on the next start.
+	rm -rf "$install_stage/factorio/saves" "$install_stage/factorio/mods" "$install_stage/factorio/config"
+	mv "$staged_binary" "$install_stage/factorio-headless"
+	rm -f /opt/factorio/bin/x64/factorio
+	cp -a "$install_stage/factorio/." /opt/factorio/
+	install -m 0755 "$install_stage/factorio-headless" /opt/factorio/bin/x64/factorio
+	rm -rf "$release_archive" "$install_stage"
 	installed_version=$(read_installed_version)
 	write_runtime_state "$release_target" "$installed_version"
 }
@@ -111,12 +164,18 @@ normalize_release_target() {
 	esac
 }
 
-read_installed_version() {
-	version=$(/opt/factorio/bin/x64/factorio --version | sed -n 's/^Version: \([0-9][0-9.]*\).*/\1/p' | head -n 1)
-	if ! normalize_exact_version "$version"; then
-		echo "ERROR: unable to read the installed Factorio version." >&2
+read_factorio_version() {
+	binary=$1
+	version=$($binary --version | sed -n 's/^Version: \([0-9][0-9.]*\).*/\1/p' | head -n 1)
+	if ! normalized=$(normalize_exact_version "$version"); then
+		echo "ERROR: unable to read the Factorio version from ${binary}." >&2
 		exit 1
 	fi
+	printf '%s\n' "$normalized"
+}
+
+read_installed_version() {
+	read_factorio_version /opt/factorio/bin/x64/factorio
 }
 
 write_runtime_state() {
@@ -142,6 +201,7 @@ fi
 if [ ! -f /opt/fsm-data/conf.json ]; then
     init_config
 fi
+configure_cookie_security
 
 install_game
 
@@ -151,4 +211,3 @@ exec ./factorio-server-manager \
     --dir /opt/factorio \
     --mod-pack-dir /opt/fsm-data/mod_packs \
     --port 80
-

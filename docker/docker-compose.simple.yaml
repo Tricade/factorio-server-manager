@@ -6,9 +6,11 @@ services:
     image: "factorio-server-manager:local"
     container_name: "factorio-server-manager"
     restart: "unless-stopped"
+    stop_grace_period: "3m"
     environment:
       - "FACTORIO_VERSION=${FACTORIO_VERSION:?Set FACTORIO_VERSION to stable, latest or an exact version}"
-      - "RCON_PASS=${RCON_PASS:?Set RCON_PASS in the environment or .env file}"
+      - "FSM_COOKIE_SECURE=${FSM_COOKIE_SECURE:-false}"
+      - "RCON_PASS=${RCON_PASS:-}"
     ports:
       - "80:80"
       - "34197:34197/udp"
@@ -17,4 +19,3 @@ services:
       - "./factorio-data/saves:/opt/factorio/saves"
       - "./factorio-data/mods:/opt/factorio/mods"
       - "./factorio-data/config:/opt/factorio/config"
-      - "./factorio-data/mod_packs:/opt/fsm/mod_packs"

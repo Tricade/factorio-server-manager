@@ -6,15 +6,16 @@ services:
     image: "factorio-server-manager:local"
     container_name: "factorio-server-manager"
     restart: "unless-stopped"
+    stop_grace_period: "3m"
     environment:
       - "FACTORIO_VERSION=${FACTORIO_VERSION:?Set FACTORIO_VERSION to stable, latest or an exact version}"
-      - "RCON_PASS=${RCON_PASS:?Set RCON_PASS in the environment or .env file}"
+      - "FSM_COOKIE_SECURE=true"
+      - "RCON_PASS=${RCON_PASS:-}"
     volumes:
       - "./fsm-data:/opt/fsm-data"
       - "./factorio-data/saves:/opt/factorio/saves"
       - "./factorio-data/mods:/opt/factorio/mods"
       - "./factorio-data/config:/opt/factorio/config"
-      - "./factorio-data/mod_packs:/opt/fsm/mod_packs"
     labels:
       - "traefik.enable=true"
 
@@ -30,7 +31,7 @@ services:
       - "traefik.udp.routers.fsm.service=fsm"
       - "traefik.udp.services.fsm.loadbalancer.server.port=34197"
   traefik:
-    image: "traefik:v3.5"
+    image: "traefik:v3.5@sha256:16acb89c6db341182970d6fdafece31303b0a380a8ed7aa51682e225229bf1d2"
     container_name: "traefik"
     restart: "always"
     command:
@@ -52,13 +53,13 @@ services:
       - "443:443"
       - "34197:34197/udp"
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "./traefik-data:/etc/traefik"
     labels:
       - "traefik.enable=true"
 
       #- "traefik.http.middlewares.fsm-auth.basicauth.usersfile=/etc/traefik/.htpasswd"
-      #- "traefik.http.middlewares.fsm-auth.basicauth.realm=FSM"
+      #- "traefik.http.middlewares.fsm-auth.basicauth.realm=Factorio Server Control"
 #networks:
 #  default:
 #    external:

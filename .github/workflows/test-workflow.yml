@@ -7,8 +7,8 @@ on:
   push:
     branches:
       - '**'
-    tags-ignore:
-      - '*.*'
+    tags:
+      - '**'
   pull_request:
     branches:
       - '**'
@@ -19,12 +19,13 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm test
       - run: npm run build
   test-go:
     strategy:
@@ -33,29 +34,33 @@ jobs:
     runs-on: ${{ matrix.os }}
     name: test-go (${{ matrix.os }})
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Setup go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: src/go.mod
           cache-dependency-path: src/go.sum
       - if: contains(matrix.os, 'ubuntu')
         working-directory: src
-        run: go test ./... -short -count=1
+        run: |
+          go version | grep -F 'go1.25.14 '
+          go test ./... -short -count=1
+          go vet ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
       - if: contains(matrix.os, 'windows')
         working-directory: src
         run: go test ./... -short -count=1
   test-unraid-template:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Validate Community Applications metadata
         run: python3 scripts/validate-unraid-template.py
   docker-build:
     needs: [test-npm, test-go, test-unraid-template]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Test release replacement on mounted Factorio directory
         run: |
           docker run --rm \
@@ -63,11 +68,11 @@ jobs:
             --mount type=tmpfs,destination=/opt/factorio \
             --env FSM_TEST_MOUNTED_FACTORIO_DIR=/opt/factorio \
             --workdir /workspace \
-            golang:1.25-bookworm \
+            golang:1.25.14-bookworm@sha256:3b4a11519ad929d1e1d261a12cff056f0c85b735253d7d861346b9c6f8b36437 \
             go test ./factorio -run '^TestReplaceReleaseFilesAtMountedDestination$' -count=1 -v
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
       - name: Build production container
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           file: docker/Dockerfile.registry

@@ -1,4 +1,4 @@
-# Build tool for Factorio Server Manager
+# Build tool for Factorio Server Control
 
 NODE_ENV:=production
 
@@ -17,6 +17,7 @@ build/factorio-server-manager-%.zip: clean app/bundle factorio-server-manager-%
 	@echo "Packaging Build - $@"
 	@cp -r app/ factorio-server-manager/
 	@cp conf.json.example factorio-server-manager/conf.json
+	@cp LICENSE README.md CHANGELOG.md factorio-server-manager/
 	@zip -r $@ factorio-server-manager > /dev/null
 	@rm -r factorio-server-manager/
 

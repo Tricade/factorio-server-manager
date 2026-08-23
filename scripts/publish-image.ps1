@@ -6,7 +6,7 @@ param(
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [string[]]$Tag = @("latest"),
+    [string[]]$Tag = @("local"),
 
     [Parameter()]
     [ValidateSet("linux/amd64")]
@@ -48,6 +48,18 @@ foreach ($currentTag in $Tag) {
         throw "Invalid image tag: $currentTag"
     }
 }
+if (@($Tag | Select-Object -Unique).Count -ne $Tag.Count) {
+    throw "Image tags must be unique."
+}
+
+$releaseTags = @($Tag | Where-Object { $_ -match "^[0-9]+\.[0-9]+\.[0-9]+$" })
+if ($releaseTags.Count -gt 1) {
+    throw "Only one SemVer tag can describe an image build."
+}
+if ($Push -and (@($Tag | Where-Object { $_ -eq "latest" }).Count -gt 0 -or $releaseTags.Count -gt 0)) {
+    throw "Publish latest and immutable SemVer tags through the GitHub release workflow. This script only pushes non-release tags."
+}
+$imageVersion = if ($releaseTags.Count -eq 1) { $releaseTags[0] } else { $Tag[0] }
 
 & docker buildx version | Out-Null
 if ($LASTEXITCODE -ne 0) {
@@ -57,6 +69,13 @@ if ($LASTEXITCODE -ne 0) {
 $revision = (& git -C $repoRoot rev-parse --short=12 HEAD 2>$null)
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($revision)) {
     $revision = "unknown"
+}
+$dirtyPaths = @(& git -C $repoRoot status --porcelain 2>$null)
+if ($LASTEXITCODE -eq 0 -and $dirtyPaths.Count -gt 0) {
+    if ($Push) {
+        throw "Refusing to publish from a dirty worktree. Commit or stash the changes first."
+    }
+    $revision = "${revision}-dirty"
 }
 
 $created = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -80,7 +99,7 @@ $buildArguments = @(
     "--platform", $Platform,
     "--file", "docker/Dockerfile.registry",
     "--build-arg", "BUILD_DATE=$created",
-    "--build-arg", "VERSION=$($Tag[0])",
+    "--build-arg", "VERSION=$imageVersion",
     "--build-arg", "VCS_REF=$revision"
 )
 $buildArguments += $sourceArgument

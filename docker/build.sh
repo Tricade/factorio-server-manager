@@ -1,10 +1,11 @@
 #!/bin/bash
-set -eou pipefail
-(
-  cd ..
-  make build
-  cp build/factorio-server-manager-linux.zip docker/factorio-server-manager-linux.zip
-)
-docker build -f Dockerfile-local -t factorio-server-manager:dev .
+set -euo pipefail
 
-rm factorio-server-manager-linux.zip
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo_root=$(dirname -- "$script_dir")
+
+make -C "$repo_root" build
+docker build \
+  --file "$repo_root/docker/Dockerfile-local" \
+  --tag factorio-server-manager:dev \
+  "$repo_root"

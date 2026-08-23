@@ -3,7 +3,7 @@
 ARG VERSION="dev"
 ARG VCS_REF="unknown"
 
-FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS frontend-build
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 AS frontend-build
 
 ARG VERSION
 ARG VCS_REF
@@ -12,7 +12,7 @@ ENV FSM_UI_VERSION=$VERSION \
 
 WORKDIR /workspace
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY webpack.config.js tailwind.config.js ./
@@ -21,7 +21,7 @@ COPY ui ./ui
 RUN npm run build
 
 
-FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS backend-build
+FROM --platform=$BUILDPLATFORM golang:1.25.14-bookworm@sha256:3b4a11519ad929d1e1d261a12cff056f0c85b735253d7d861346b9c6f8b36437 AS backend-build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -43,7 +43,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 
 # glibc is required by the official Factorio headless server.
-FROM ubuntu:24.04 AS runtime
+FROM ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517 AS runtime
 
 ARG VERSION
 ARG VCS_REF
@@ -62,6 +62,7 @@ WORKDIR /opt/fsm
 COPY --from=backend-build /out/factorio-server-manager ./factorio-server-manager
 COPY --from=frontend-build /workspace/app/ ./app/
 COPY conf.json.example ./conf.json
+COPY LICENSE /usr/share/licenses/factorio-server-manager/LICENSE
 COPY docker/entrypoint.sh /opt/entrypoint.sh
 
 RUN sed -i 's/\r$//' /opt/entrypoint.sh \
@@ -71,7 +72,7 @@ RUN sed -i 's/\r$//' /opt/entrypoint.sh \
 # invalidate the package-install cache.
 ARG BUILD_DATE="unknown"
 ARG SOURCE_URL="https://github.com/Tricade/factorio-server-manager"
-LABEL org.opencontainers.image.title="Factorio Server Manager" \
+LABEL org.opencontainers.image.title="Factorio Server Control" \
       org.opencontainers.image.description="Web UI for managing a persistent Factorio headless server" \
       org.opencontainers.image.source=$SOURCE_URL \
       org.opencontainers.image.created=$BUILD_DATE \
