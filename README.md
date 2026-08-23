@@ -39,8 +39,11 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 ### Factory-map snapshots
 
 - Authenticated PNG snapshots generated from an isolated copy of the selected save and enabled mods.
-- Nauvis, planets, space platforms and modded surfaces listed separately.
+- Nauvis, planets, space platforms and modded surfaces grouped separately in the selector.
 - Player-visible platform names and framing around persistent player construction instead of all explored terrain.
+- Optional manager-wide exclusion of space platforms before chart, image and building-detail export for saves with large platform fleets.
+- Automatic, manual-only and fully disabled generation modes for resource-constrained hosts; disabling generation retains the last completed images.
+- Optional postponement of automatic renders while players are online; manual generation remains available in manual-only and automatic modes.
 - Direct wheel/button zoom, drag-to-pan, reset-to-fit and a separate fullscreen lightbox.
 - A lazy Canvas building-footprint layer and legend at detailed zoom levels, with graceful fallback for legacy snapshots.
 - Manual generation or a manager-wide scheduled refresh interval.
@@ -165,7 +168,7 @@ The world generator appears only while the active profile has no save. Once a sa
 
 ### Factory maps
 
-The manager renders chart pixels through the installed Factorio headless binary in a disposable workspace. Factorio 2.0.61 or newer is required. Completed images live below persistent `/opt/fsm-data/map-snapshots/<profile-id>` and are served only by authenticated routes.
+The manager renders chart pixels through the installed Factorio headless binary in a disposable workspace. Factorio 2.0.61 or newer is required. Completed images live below persistent `/opt/fsm-data/map-snapshots/<profile-id>` and are served only by authenticated routes. Manager-wide settings select automatic, manual-only or fully disabled generation, can postpone automatic work while players are online, and can exclude space platforms before export. The next completed snapshot replaces any older platform images and metadata.
 
 ### Fixed checkpoints
 
