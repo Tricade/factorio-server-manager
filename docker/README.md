@@ -28,6 +28,8 @@ The example exposes the manager on TCP port `8080` and Factorio on UDP port `341
 
 The manager has no built-in analytics or telemetry. Operational data remains in the persistent mounts and is not sent to the fork maintainer. Version installation contacts Factorio's official release services; Mod Portal requests contact official Factorio authentication/mod endpoints only when those features are used. A submitted Factorio password is not retained; the returned username/user key is stored with restrictive permissions in `/opt/fsm-data/factorio.auth`. Optional links in the UI open third-party sites only after a user selects them. See [Privacy and outbound connections](../README.md#privacy-and-outbound-connections) for the full boundary.
 
+The project is developed with generative-AI assistance, but the deployed image contains no AI model and sends no runtime data to an AI provider. The complete scope and visual-asset provenance are included in [AI-DISCLOSURE.md](../AI-DISCLOSURE.md) and shipped inside the image at `/usr/share/doc/factorio-server-manager/AI-DISCLOSURE.md`.
+
 ## Persistent storage
 
 The production entrypoint refuses to start when manager credentials or game data would be disposable.

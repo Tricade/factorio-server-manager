@@ -289,6 +289,7 @@ jobs:
           unzip -Z1 "$windows_zip" > "$windows_entries"
 
           for common_file in \
+            factorio-server-manager/AI-DISCLOSURE.md \
             factorio-server-manager/LICENSE \
             factorio-server-manager/README.md \
             factorio-server-manager/CHANGELOG.md \
@@ -474,6 +475,8 @@ jobs:
 
           docker pull --platform linux/amd64 "$IMAGE@$RELEASE_DIGEST"
           test "$(docker image inspect "$IMAGE@$RELEASE_DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.title"}}')" = 'Factorio Server Control'
+          test "$(docker image inspect "$IMAGE@$RELEASE_DIGEST" --format '{{index .Config.Labels "io.factorio-server-control.ai-assisted-development"}}')" = 'true'
+          docker run --rm --platform linux/amd64 --entrypoint test "$IMAGE@$RELEASE_DIGEST" -f /usr/share/doc/factorio-server-manager/AI-DISCLOSURE.md
           test "$(docker image inspect "$IMAGE@$RELEASE_DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "$RELEASE_TAG"
           test "$(docker image inspect "$IMAGE@$RELEASE_DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$EXPECTED_COMMIT"
           test "$(docker image inspect "$IMAGE@$RELEASE_DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.source"}}')" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
@@ -728,6 +731,7 @@ jobs:
           unzip -Z1 "$linux_zip" > "$linux_entries"
           unzip -Z1 "$windows_zip" > "$windows_entries"
           for common_file in \
+            factorio-server-manager/AI-DISCLOSURE.md \
             factorio-server-manager/LICENSE \
             factorio-server-manager/README.md \
             factorio-server-manager/CHANGELOG.md \
@@ -763,6 +767,8 @@ jobs:
           [[ "$release_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           docker pull --platform linux/amd64 "$image@$release_digest"
           test "$(docker image inspect "$image@$release_digest" --format '{{index .Config.Labels "org.opencontainers.image.title"}}')" = 'Factorio Server Control'
+          test "$(docker image inspect "$image@$release_digest" --format '{{index .Config.Labels "io.factorio-server-control.ai-assisted-development"}}')" = 'true'
+          docker run --rm --platform linux/amd64 --entrypoint test "$image@$release_digest" -f /usr/share/doc/factorio-server-manager/AI-DISCLOSURE.md
           test "$(docker image inspect "$image@$release_digest" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "$RELEASE_TAG"
           test "$(docker image inspect "$image@$release_digest" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$tag_commit"
           test "$(docker image inspect "$image@$release_digest" --format '{{index .Config.Labels "org.opencontainers.image.source"}}')" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"

@@ -154,7 +154,7 @@ foreach ($asset in $releaseAssets) {
 Get-ChildItem -LiteralPath (Join-Path $repoRoot "app") -Force |
     Copy-Item -Destination $appDestination -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "conf.json.example") -Destination (Join-Path $packageRoot "conf.json")
-foreach ($document in @("CHANGELOG.md", "LICENSE", "README.md")) {
+foreach ($document in @("AI-DISCLOSURE.md", "CHANGELOG.md", "LICENSE", "README.md")) {
     Copy-Item -LiteralPath (Join-Path $repoRoot $document) -Destination $packageRoot
 }
 

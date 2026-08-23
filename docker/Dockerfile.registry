@@ -63,6 +63,7 @@ COPY --from=backend-build /out/factorio-server-manager ./factorio-server-manager
 COPY --from=frontend-build /workspace/app/ ./app/
 COPY conf.json.example ./conf.json
 COPY LICENSE /usr/share/licenses/factorio-server-manager/LICENSE
+COPY AI-DISCLOSURE.md /usr/share/doc/factorio-server-manager/AI-DISCLOSURE.md
 COPY docker/entrypoint.sh /opt/entrypoint.sh
 
 RUN sed -i 's/\r$//' /opt/entrypoint.sh \
@@ -78,7 +79,9 @@ LABEL org.opencontainers.image.title="Factorio Server Control" \
       org.opencontainers.image.created=$BUILD_DATE \
       org.opencontainers.image.version=$VERSION \
       org.opencontainers.image.revision=$VCS_REF \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT" \
+      io.factorio-server-control.ai-assisted-development="true" \
+      io.factorio-server-control.ai-disclosure="/usr/share/doc/factorio-server-manager/AI-DISCLOSURE.md"
 
 EXPOSE 80/tcp 34197/udp
 
