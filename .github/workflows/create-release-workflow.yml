@@ -192,9 +192,9 @@ jobs:
             }
 
             previous_digest=$(docker buildx imagetools inspect "$image:$previous_tag" |
-              awk '$1 == "Digest:" { print $2; exit }')
+              awk '$1 == "Digest:" && !found { print $2; found = 1 }')
             latest_digest=$(docker buildx imagetools inspect "$image:latest" |
-              awk '$1 == "Digest:" { print $2; exit }')
+              awk '$1 == "Digest:" && !found { print $2; found = 1 }')
             [[ "$previous_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
             test "$latest_digest" = "$previous_digest" || {
               echo "$image:latest does not match the current latest stable release $previous_tag." >&2
@@ -415,7 +415,7 @@ jobs:
               exit 1
             }
             current_latest_digest=$(docker buildx imagetools inspect "$IMAGE:latest" |
-              awk '$1 == "Digest:" { print $2; exit }')
+              awk '$1 == "Digest:" && !found { print $2; found = 1 }')
             test "$current_latest_digest" = "$EXPECTED_PREVIOUS_DIGEST" || {
               echo "The latest image changed during this run." >&2
               exit 1
@@ -469,7 +469,7 @@ jobs:
           set -euo pipefail
           [[ "$RELEASE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
           remote_digest=$(docker buildx imagetools inspect "$IMAGE:$RELEASE_TAG" |
-            awk '$1 == "Digest:" { print $2; exit }')
+            awk '$1 == "Digest:" && !found { print $2; found = 1 }')
           test "$remote_digest" = "$RELEASE_DIGEST"
 
           docker pull --platform linux/amd64 "$IMAGE@$RELEASE_DIGEST"
@@ -519,12 +519,12 @@ jobs:
           test "$remote_tag_sha" = "$EXPECTED_TAG_REF_SHA"
           test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$EXPECTED_COMMIT"
           test "$(docker buildx imagetools inspect "$IMAGE:$RELEASE_TAG" |
-            awk '$1 == "Digest:" { print $2; exit }')" = "$RELEASE_DIGEST"
+            awk '$1 == "Digest:" && !found { print $2; found = 1 }')" = "$RELEASE_DIGEST"
 
           if test -n "$EXPECTED_PREVIOUS_TAG"; then
             test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" = "$EXPECTED_PREVIOUS_TAG"
             test "$(docker buildx imagetools inspect "$IMAGE:latest" |
-              awk '$1 == "Digest:" { print $2; exit }')" = "$EXPECTED_PREVIOUS_DIGEST"
+              awk '$1 == "Digest:" && !found { print $2; found = 1 }')" = "$EXPECTED_PREVIOUS_DIGEST"
           else
             latest_release_error=$(mktemp)
             if gh api "repos/$GITHUB_REPOSITORY/releases/latest" >/dev/null 2>"$latest_release_error"; then
@@ -560,7 +560,8 @@ jobs:
             echo "Expected exactly one staged draft for $RELEASE_TAG, found $draft_release_count." >&2
             exit 1
           }
-          draft_release_id=$(printf '%s\n' "$draft_release_ids" | awk 'NF { print; exit }')
+          draft_release_id=$(printf '%s\n' "$draft_release_ids" |
+            awk 'NF && !found { print; found = 1 }')
           [[ "$draft_release_id" =~ ^[0-9]+$ ]]
 
           release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/$draft_release_id")
@@ -583,7 +584,7 @@ jobs:
             --tag "$IMAGE:latest" \
             "$IMAGE@$RELEASE_DIGEST"
           test "$(docker buildx imagetools inspect "$IMAGE:latest" |
-            awk '$1 == "Digest:" { print $2; exit }')" = "$RELEASE_DIGEST"
+            awk '$1 == "Digest:" && !found { print $2; found = 1 }')" = "$RELEASE_DIGEST"
 
           test "$(git ls-remote --exit-code --refs origin "refs/tags/$RELEASE_TAG" |
             awk 'NR == 1 { print $1 }')" = "$EXPECTED_TAG_REF_SHA"
@@ -604,7 +605,7 @@ jobs:
           ' \
             <<<"$published_json" >/dev/null
           test "$(docker buildx imagetools inspect "$IMAGE:latest" |
-            awk '$1 == "Digest:" { print $2; exit }')" = "$RELEASE_DIGEST"
+            awk '$1 == "Digest:" && !found { print $2; found = 1 }')" = "$RELEASE_DIGEST"
 
   resume-staged:
     name: Verify and resume staged release
@@ -684,7 +685,8 @@ jobs:
             echo "Expected exactly one staged draft for $RELEASE_TAG, found $draft_release_count." >&2
             exit 1
           }
-          draft_release_id=$(printf '%s\n' "$draft_release_ids" | awk 'NF { print; exit }')
+          draft_release_id=$(printf '%s\n' "$draft_release_ids" |
+            awk 'NF && !found { print; found = 1 }')
           [[ "$draft_release_id" =~ ^[0-9]+$ ]]
 
           release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/$draft_release_id")
@@ -757,7 +759,7 @@ jobs:
 
           cd "$GITHUB_WORKSPACE"
           release_digest=$(docker buildx imagetools inspect "$image:$RELEASE_TAG" |
-            awk '$1 == "Digest:" { print $2; exit }')
+            awk '$1 == "Digest:" && !found { print $2; found = 1 }')
           [[ "$release_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           docker pull --platform linux/amd64 "$image@$release_digest"
           test "$(docker image inspect "$image@$release_digest" --format '{{index .Config.Labels "org.opencontainers.image.title"}}')" = 'Factorio Server Control'
@@ -797,9 +799,9 @@ jobs:
               (( new_major == old_major && new_minor > old_minor )) ||
               (( new_major == old_major && new_minor == old_minor && new_patch > old_patch ))
             previous_digest=$(docker buildx imagetools inspect "$image:$previous_tag" |
-              awk '$1 == "Digest:" { print $2; exit }')
+              awk '$1 == "Digest:" && !found { print $2; found = 1 }')
             current_latest_digest=$(docker buildx imagetools inspect "$image:latest" |
-              awk '$1 == "Digest:" { print $2; exit }')
+              awk '$1 == "Digest:" && !found { print $2; found = 1 }')
             if test "$current_latest_digest" != "$previous_digest" &&
               test "$current_latest_digest" != "$release_digest"; then
               echo "$image:latest matches neither $previous_tag nor the staged release." >&2
@@ -810,7 +812,7 @@ jobs:
             previous_tag=''
             latest_image_error=$(mktemp)
             if current_latest_digest=$(docker buildx imagetools inspect "$image:latest" 2>"$latest_image_error" |
-              awk '$1 == "Digest:" { print $2; exit }'); then
+              awk '$1 == "Digest:" && !found { print $2; found = 1 }'); then
               test "$current_latest_digest" = "$release_digest"
             else
               grep -Eiq 'manifest unknown|not found|no such manifest' "$latest_image_error"
@@ -831,7 +833,7 @@ jobs:
               "$image@$release_digest"
           fi
           test "$(docker buildx imagetools inspect "$image:latest" |
-            awk '$1 == "Digest:" { print $2; exit }')" = "$release_digest"
+            awk '$1 == "Digest:" && !found { print $2; found = 1 }')" = "$release_digest"
 
           test "$(git ls-remote --exit-code --refs origin "$tag_ref" |
             awk 'NR == 1 { print $1 }')" = "$remote_tag_sha"
@@ -849,4 +851,4 @@ jobs:
           ' <<<"$published_json" >/dev/null
           test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" = "$RELEASE_TAG"
           test "$(docker buildx imagetools inspect "$image:latest" |
-            awk '$1 == "Digest:" { print $2; exit }')" = "$release_digest"
+            awk '$1 == "Digest:" && !found { print $2; found = 1 }')" = "$release_digest"
