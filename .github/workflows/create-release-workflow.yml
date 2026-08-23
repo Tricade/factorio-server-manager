@@ -486,11 +486,18 @@ jobs:
           set -e
           test "$missing_mount_status" -ne 0
           grep -F '/opt/fsm-data is not a persistent bind mount or named volume' <<<"$missing_mount_output"
+          runtime_mount_root=$(mktemp -d)
+          trap 'rm -rf "$runtime_mount_root"' EXIT
+          mkdir -p \
+            "$runtime_mount_root/data" \
+            "$runtime_mount_root/saves" \
+            "$runtime_mount_root/mods" \
+            "$runtime_mount_root/config"
           docker run --rm --platform linux/amd64 \
-            --mount type=tmpfs,destination=/opt/fsm-data \
-            --mount type=tmpfs,destination=/opt/factorio/saves \
-            --mount type=tmpfs,destination=/opt/factorio/mods \
-            --mount type=tmpfs,destination=/opt/factorio/config \
+            --mount "type=bind,source=$runtime_mount_root/data,destination=/opt/fsm-data" \
+            --mount "type=bind,source=$runtime_mount_root/saves,destination=/opt/factorio/saves" \
+            --mount "type=bind,source=$runtime_mount_root/mods,destination=/opt/factorio/mods" \
+            --mount "type=bind,source=$runtime_mount_root/config,destination=/opt/factorio/config" \
             "$IMAGE@$RELEASE_DIGEST" true
 
       - name: Stage assets, advance latest and publish release
@@ -766,12 +773,19 @@ jobs:
           set -e
           test "$missing_mount_status" -ne 0
           grep -F '/opt/fsm-data is not a persistent bind mount or named volume' <<<"$missing_mount_output"
+          runtime_mount_root="$verification_dir/runtime"
+          mkdir -p \
+            "$runtime_mount_root/data" \
+            "$runtime_mount_root/saves" \
+            "$runtime_mount_root/mods" \
+            "$runtime_mount_root/config"
           docker run --rm --platform linux/amd64 \
-            --mount type=tmpfs,destination=/opt/fsm-data \
-            --mount type=tmpfs,destination=/opt/factorio/saves \
-            --mount type=tmpfs,destination=/opt/factorio/mods \
-            --mount type=tmpfs,destination=/opt/factorio/config \
+            --mount "type=bind,source=$runtime_mount_root/data,destination=/opt/fsm-data" \
+            --mount "type=bind,source=$runtime_mount_root/saves,destination=/opt/factorio/saves" \
+            --mount "type=bind,source=$runtime_mount_root/mods,destination=/opt/factorio/mods" \
+            --mount "type=bind,source=$runtime_mount_root/config,destination=/opt/factorio/config" \
             "$image@$release_digest" true
+          echo "Container persistence guard: OK"
 
           latest_release_error=$(mktemp)
           if latest_release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" 2>"$latest_release_error"); then
