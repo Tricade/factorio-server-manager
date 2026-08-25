@@ -11,6 +11,7 @@ FSM_IMAGE=ghcr.io/tricade/factorio-server-manager:latest
 FSM_HTTP_PORT=8080
 FACTORIO_PORT=34197
 FACTORIO_VERSION=latest
+FSM_MAX_UPLOAD=512
 FSM_COOKIE_SECURE=false
 RCON_PASS=
 ```
@@ -24,7 +25,7 @@ docker compose --env-file docker/.env.registry -f docker/docker-compose.registry
 
 The GHCR package is public and does not require a registry login for pulls. Prefer an immutable SemVer tag such as `:0.15.1` for reproducible deployments; `:latest` follows the newest published release.
 
-The example exposes the manager on TCP port `8080` and Factorio on UDP port `34197`. It sets `FSM_COOKIE_SECURE=false` for direct HTTP login. Keep that endpoint on a trusted private network or VPN; when every user enters through an HTTPS reverse proxy, set `FSM_COOKIE_SECURE=true` before exposing the UI more broadly.
+The example exposes the manager on TCP port `8080` and Factorio on UDP port `34197`. `FSM_MAX_UPLOAD` is the maximum size in MiB for one save, mod or mod-pack upload and defaults to `512`. The example sets `FSM_COOKIE_SECURE=false` for direct HTTP login. Keep that endpoint on a trusted private network or VPN; when every user enters through an HTTPS reverse proxy, set `FSM_COOKIE_SECURE=true` before exposing the UI more broadly.
 
 The manager has no built-in analytics or telemetry. Operational data remains in the persistent mounts and is not sent to the fork maintainer. Version installation contacts Factorio's official release services; Mod Portal requests contact official Factorio authentication/mod endpoints only when those features are used. A submitted Factorio password is not retained; the returned username/user key is stored with restrictive permissions in `/opt/fsm-data/factorio.auth`. Optional links in the UI open third-party sites only after a user selects them. See [Privacy and outbound connections](../README.md#privacy-and-outbound-connections) for the full boundary.
 

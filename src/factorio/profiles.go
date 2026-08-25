@@ -477,7 +477,7 @@ func ActivateProfile(id string) (ProfileState, error) {
 		}
 	}
 
-	activated := make([]*profileDirectorySwap, 0, len(swaps))
+	activated := make([]*directoryEntrySwap, 0, len(swaps))
 	for _, swap := range swaps {
 		if err := swap.activate(); err != nil {
 			rollbackErr := rollbackProfileSwitch(activated, current, releaseChanged)
@@ -533,7 +533,7 @@ func ActivateProfile(id string) (ProfileState, error) {
 	return stateFromManifest(manifest), nil
 }
 
-func rollbackProfileSwitch(activated []*profileDirectorySwap, current Profile, releaseChanged bool) error {
+func rollbackProfileSwitch(activated []*directoryEntrySwap, current Profile, releaseChanged bool) error {
 	var rollbackErrors []error
 	for index := len(activated) - 1; index >= 0; index-- {
 		if err := activated[index].rollback(); err != nil {
@@ -830,7 +830,11 @@ func copyProfileFile(sourcePath, destinationPath string, info os.FileInfo) error
 	return os.Chtimes(destinationPath, info.ModTime(), info.ModTime())
 }
 
-type profileDirectorySwap struct {
+// directoryEntrySwap replaces the contents of destination without renaming
+// destination itself. Keeping staging and backup directories below the
+// destination makes the transaction safe when destination is a Docker bind
+// mount or volume mount point.
+type directoryEntrySwap struct {
 	destination      string
 	staging          string
 	backup           string
@@ -840,9 +844,9 @@ type profileDirectorySwap struct {
 	preserveRecovery bool
 }
 
-func prepareProfileSwaps(profileID string) ([]*profileDirectorySwap, error) {
+func prepareProfileSwaps(profileID string) ([]*directoryEntrySwap, error) {
 	active := profileActiveDirectories()
-	swaps := make([]*profileDirectorySwap, 0, 3)
+	swaps := make([]*directoryEntrySwap, 0, 3)
 	for _, name := range []string{"saves", "mods", "config"} {
 		swap, err := prepareProfileDirectorySwap(filepath.Join(profileDirectory(profileID), name), active[name])
 		if err != nil {
@@ -854,28 +858,35 @@ func prepareProfileSwaps(profileID string) ([]*profileDirectorySwap, error) {
 	return swaps, nil
 }
 
-func prepareProfileDirectorySwap(source, destination string) (*profileDirectorySwap, error) {
-	if err := os.MkdirAll(destination, 0755); err != nil {
-		return nil, err
-	}
-	staging, err := os.MkdirTemp(destination, ".profile-staging-")
+func prepareProfileDirectorySwap(source, destination string) (*directoryEntrySwap, error) {
+	swap, err := newDirectoryEntrySwap(destination, ".profile-staging-", ".profile-backup-")
 	if err != nil {
 		return nil, err
 	}
-	backup, err := os.MkdirTemp(destination, ".profile-backup-")
-	if err != nil {
-		_ = os.RemoveAll(staging)
-		return nil, err
-	}
-	swap := &profileDirectorySwap{destination: destination, staging: staging, backup: backup}
-	if err := copyProfileDirectory(source, staging); err != nil {
+	if err := copyProfileDirectory(source, swap.staging); err != nil {
 		_ = swap.cleanup()
 		return nil, err
 	}
 	return swap, nil
 }
 
-func (swap *profileDirectorySwap) activate() error {
+func newDirectoryEntrySwap(destination, stagingPattern, backupPattern string) (*directoryEntrySwap, error) {
+	if err := os.MkdirAll(destination, 0755); err != nil {
+		return nil, err
+	}
+	staging, err := os.MkdirTemp(destination, stagingPattern)
+	if err != nil {
+		return nil, err
+	}
+	backup, err := os.MkdirTemp(destination, backupPattern)
+	if err != nil {
+		_ = os.RemoveAll(staging)
+		return nil, err
+	}
+	return &directoryEntrySwap{destination: destination, staging: staging, backup: backup}, nil
+}
+
+func (swap *directoryEntrySwap) activate() error {
 	ignored := map[string]bool{filepath.Base(swap.staging): true, filepath.Base(swap.backup): true}
 	backedUp, err := moveProfileEntries(swap.destination, swap.backup, ignored)
 	swap.backedUp = backedUp
@@ -899,7 +910,7 @@ func (swap *profileDirectorySwap) activate() error {
 	return nil
 }
 
-func (swap *profileDirectorySwap) rollback() error {
+func (swap *directoryEntrySwap) rollback() error {
 	var rollbackErrors []error
 	if err := restoreProfileEntries(swap.destination, swap.staging, swap.activated); err != nil {
 		rollbackErrors = append(rollbackErrors, fmt.Errorf("remove activated entries: %w", err))
@@ -913,20 +924,20 @@ func (swap *profileDirectorySwap) rollback() error {
 	return rollbackErr
 }
 
-func (swap *profileDirectorySwap) commit() error {
+func (swap *directoryEntrySwap) commit() error {
 	swap.isActive = false
 	swap.preserveRecovery = false
 	return swap.cleanup()
 }
 
-func (swap *profileDirectorySwap) cleanup() error {
+func (swap *directoryEntrySwap) cleanup() error {
 	if swap.preserveRecovery {
 		return nil
 	}
 	return errors.Join(os.RemoveAll(swap.staging), os.RemoveAll(swap.backup))
 }
 
-func cleanupProfileSwaps(swaps []*profileDirectorySwap) {
+func cleanupProfileSwaps(swaps []*directoryEntrySwap) {
 	for _, swap := range swaps {
 		if swap.isActive || swap.preserveRecovery {
 			continue

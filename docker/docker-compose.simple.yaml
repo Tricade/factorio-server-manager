@@ -9,6 +9,7 @@ services:
     stop_grace_period: "3m"
     environment:
       - "FACTORIO_VERSION=${FACTORIO_VERSION:?Set FACTORIO_VERSION to stable, latest or an exact version}"
+      - "FSM_MAX_UPLOAD=${FSM_MAX_UPLOAD:-512}"
       - "FSM_COOKIE_SECURE=${FSM_COOKIE_SECURE:-false}"
       - "RCON_PASS=${RCON_PASS:-}"
     ports:
