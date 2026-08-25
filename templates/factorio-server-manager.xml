@@ -18,11 +18,11 @@
   <ReadMe>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/README.md</ReadMe>
   <Icon>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped --stop-timeout=180</ExtraParams>
-  <Date>2026-08-23</Date>
+  <Date>2026-08-25</Date>
   <DonateText>Support Factorio Server Control</DonateText>
   <DonateLink>https://ko-fi.com/tricade</DonateLink>
   <Requires>Persistent manager-data, saves, mods and config paths are required. Internet access to Factorio's official services is required for game-version installation and requested Mod Portal operations; the manager has no built-in telemetry. Keep its HTTP Web UI on a trusted LAN/VPN or behind an HTTPS reverse proxy. Split-mount recreation needs download access to restore the recorded exact game version. The image supports linux/amd64.</Requires>
-  <Changes>0.17.0: Added automatic, manual-only and disabled factory-map modes, optional idle-server and platform filters, grouped planet/platform selectors, visible platform names and sharper building footprints for compact platforms. 0.16.0: Renamed the public app to Factorio Server Control, added player and detailed factory-map views, hardened persistent deployment defaults, and reserved a three-minute clean-stop window.</Changes>
+  <Changes>0.17.1: Raised the default save and mod upload limit to 512 MiB, fixed large multipart uploads and split-mount mod replacement, and hid raw Factorio icon markup in factory-map labels. 0.17.0: Added automatic, manual-only and disabled factory-map modes, optional idle-server and platform filters, grouped planet/platform selectors, visible platform names and sharper building footprints for compact platforms. 0.16.0: Renamed the public app to Factorio Server Control, added player and detailed factory-map views, hardened persistent deployment defaults, and reserved a three-minute clean-stop window.</Changes>
   <License>MIT</License>
   <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Map_Lightbox.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Map_Settings.png</Screenshot>

@@ -5,11 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-08-25
+
 ### Added
 - Added root-level repository guidance for automated contributors covering architecture, safety invariants, verification, deployment and guarded release practices.
 
 ### Changed
 - Raised the default per-file upload limit from 20 MiB to 512 MiB and exposed `FSM_MAX_UPLOAD` in the Unraid template and Docker examples so existing Factorio saves can be uploaded without custom container arguments.
+- Refreshed the pinned Node 24 builder image to its current trusted upstream digest for reproducible release builds.
 
 ### Fixed
 - Fixed save-upload size enforcement to allow multipart framing overhead and return/log the configured limit when an upload is too large.
