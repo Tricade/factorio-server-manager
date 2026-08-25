@@ -77,7 +77,7 @@ func TestModPackActivationFailureRestoresActiveMods(t *testing.T) {
 	profileActiveDirectories = func() map[string]string { return map[string]string{"mods": activeMods} }
 	failed := false
 	profileRename = func(oldPath, newPath string) error {
-		if !failed && strings.Contains(filepath.Base(oldPath), ".mods-modpack-staging-") && newPath == activeMods {
+		if !failed && strings.Contains(filepath.Base(filepath.Dir(oldPath)), ".mods-modpack-staging-") && filepath.Dir(newPath) == activeMods {
 			failed = true
 			return errors.New("simulated staged copy failure")
 		}
@@ -123,7 +123,7 @@ func TestDeleteAllModsActivationFailureRestoresActiveDirectory(t *testing.T) {
 	originalRename := profileRename
 	failed := false
 	profileRename = func(oldPath, newPath string) error {
-		if !failed && strings.Contains(filepath.Base(oldPath), ".mods-empty-staging-") && newPath == activeMods {
+		if !failed && strings.Contains(filepath.Base(filepath.Dir(oldPath)), ".mods-empty-staging-") && filepath.Dir(newPath) == activeMods {
 			failed = true
 			return errors.New("simulated empty-directory activation failure")
 		}
@@ -137,6 +137,38 @@ func TestDeleteAllModsActivationFailureRestoresActiveDirectory(t *testing.T) {
 	contents, err := os.ReadFile(filepath.Join(activeMods, "keep.zip"))
 	if err != nil || string(contents) != "existing archive" {
 		t.Fatalf("failed delete-all activation did not restore existing mods: contents=%q error=%v", contents, err)
+	}
+}
+
+// This test is enabled by the Docker integration command. Its destination is
+// a nested tmpfs mount matching the split /opt/factorio/mods mount used by the
+// Unraid template.
+func TestDeleteAllModsAtMountedDestination(t *testing.T) {
+	activeMods := os.Getenv("FSM_TEST_MOUNTED_MODS_DIR")
+	if activeMods == "" {
+		t.Skip("set FSM_TEST_MOUNTED_MODS_DIR to a dedicated mount point")
+	}
+	if err := os.WriteFile(filepath.Join(activeMods, "remove-me.zip"), []byte("old mod"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceActiveModsWithEmptyDirectory(activeMods); err != nil {
+		t.Fatalf("replace mods at mounted destination: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(activeMods, "remove-me.zip")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("old mod was not removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(activeMods, "mod-list.json")); err != nil {
+		t.Fatalf("base-only mod list was not activated: %v", err)
+	}
+	entries, err := os.ReadDir(activeMods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".mods-empty-") {
+			t.Fatalf("temporary mods directory was left behind: %s", entry.Name())
+		}
 	}
 }
 

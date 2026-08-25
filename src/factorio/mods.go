@@ -45,21 +45,15 @@ func replaceActiveModsWithEmptyDirectory(destination string) error {
 	}
 
 	modsDirPerm := modsDirInfo.Mode().Perm()
-	parent := filepath.Dir(destination)
-	staging, err := os.MkdirTemp(parent, ".mods-empty-staging-")
+	swap, err := newDirectoryEntrySwap(destination, ".mods-empty-staging-", ".mods-empty-backup-")
 	if err != nil {
 		return fmt.Errorf("stage empty mods directory: %w", err)
 	}
-	swap := &modPackDirectorySwap{
-		destination: destination,
-		staging:     staging,
-		backup:      staging + ".previous",
-	}
 	defer swap.cleanup()
-	if err := os.Chmod(staging, modsDirPerm); err != nil {
+	if err := os.Chmod(swap.staging, modsDirPerm); err != nil {
 		return fmt.Errorf("set staged mods permissions: %w", err)
 	}
-	if _, err := NewMods(staging); err != nil {
+	if _, err := NewMods(swap.staging); err != nil {
 		return fmt.Errorf("initialize staged mods directory: %w", err)
 	}
 	if err := swap.activate(); err != nil {

@@ -26,6 +26,7 @@ import (
 
 const readHttpBodyError = "Could not read the Request Body."
 const maximumJSONRequestBodyBytes int64 = 1 * 1024 * 1024
+const multipartRequestOverheadBytes int64 = 1 * 1024 * 1024
 
 type JSONResponseFileInput struct {
 	Success   bool        `json:"success"`
@@ -169,18 +170,21 @@ func UploadSave(w http.ResponseWriter, r *http.Request) {
 
 	config := bootstrap.GetConfig()
 	if config.MaxUploadSize > 0 {
-		r.Body = http.MaxBytesReader(w, r.Body, config.MaxUploadSize)
+		r.Body = http.MaxBytesReader(w, r.Body, maximumMultipartRequestSize(config.MaxUploadSize))
 	}
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		resp = fmt.Sprintf("Unable to parse save upload: %s", err)
 		var maxBytesError *http.MaxBytesError
 		if errors.As(err, &maxBytesError) {
+			resp = uploadLimitMessage("Save file", config.MaxUploadSize)
 			w.WriteHeader(http.StatusRequestEntityTooLarge)
 		} else {
+			resp = fmt.Sprintf("Unable to parse save upload: %s", err)
 			w.WriteHeader(http.StatusBadRequest)
 		}
+		log.Println(resp)
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
 	files := r.MultipartForm.File["savefile"]
 	if len(files) != 1 {
 		resp = "Exactly one save file must be provided"
@@ -189,6 +193,12 @@ func UploadSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, saveFile := range files {
+		if config.MaxUploadSize > 0 && saveFile.Size > config.MaxUploadSize {
+			resp = uploadLimitMessage("Save file", config.MaxUploadSize)
+			log.Println(resp)
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			return
+		}
 		if err := factorio.ValidatePathElement(saveFile.Filename); err != nil {
 			resp = fmt.Sprintf("Invalid save filename: %s", err)
 			w.WriteHeader(http.StatusBadRequest)
@@ -253,6 +263,21 @@ func UploadSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp = "Uploading files successful"
+}
+
+func maximumMultipartRequestSize(maximumFileBytes int64) int64 {
+	const maximumInt64 = int64(1<<63 - 1)
+	if maximumFileBytes > maximumInt64-multipartRequestOverheadBytes {
+		return maximumInt64
+	}
+	return maximumFileBytes + multipartRequestOverheadBytes
+}
+
+func uploadLimitMessage(subject string, maximumFileBytes int64) string {
+	if maximumFileBytes > 0 && maximumFileBytes%(1024*1024) == 0 {
+		return fmt.Sprintf("%s exceeds the configured upload limit of %d MiB", subject, maximumFileBytes/(1024*1024))
+	}
+	return fmt.Sprintf("%s exceeds the configured upload limit of %d bytes", subject, maximumFileBytes)
 }
 
 // Deletes provided save

@@ -242,104 +242,26 @@ func (modPack *ModPack) LoadModPack() error {
 	return nil
 }
 
-// modPackDirectorySwap keeps the previous active directory intact under a
-// sibling backup name while a fully staged replacement is activated. Renaming
-// whole sibling directories avoids exposing a partially copied mod set and is
-// supported on both Unix and Windows while the server/profile locks are held.
-type modPackDirectorySwap struct {
-	destination      string
-	staging          string
-	backup           string
-	hadDestination   bool
-	active           bool
-	preserveRecovery bool
-}
+// Mod-pack activation uses the mount-safe entry transaction shared with
+// profile activation. The active mods directory itself can be a Docker mount
+// point, so it must never be renamed.
+type modPackDirectorySwap = directoryEntrySwap
 
 func prepareModPackDirectorySwap(source, destination string) (*modPackDirectorySwap, error) {
-	parent := filepath.Dir(destination)
-	if source == "" || destination == "" || parent == "" {
+	if source == "" || destination == "" || filepath.Dir(destination) == "" {
 		return nil, errors.New("mod pack source or destination is empty")
 	}
-	if err := os.MkdirAll(parent, 0755); err != nil {
-		return nil, fmt.Errorf("create active mods parent: %w", err)
-	}
-
-	staging, err := os.MkdirTemp(parent, ".mods-modpack-staging-")
+	swap, err := newDirectoryEntrySwap(destination, ".mods-modpack-staging-", ".mods-modpack-backup-")
 	if err != nil {
 		return nil, fmt.Errorf("create staged mods directory: %w", err)
 	}
-	swap := &modPackDirectorySwap{
-		destination: destination,
-		staging:     staging,
-		backup:      staging + ".previous",
-	}
-	if err := copyProfileDirectory(source, staging); err != nil {
+	if err := copyProfileDirectory(source, swap.staging); err != nil {
 		_ = swap.cleanup()
 		return nil, fmt.Errorf("copy mod pack into staging: %w", err)
 	}
-	if _, err := NewMods(staging); err != nil {
+	if _, err := NewMods(swap.staging); err != nil {
 		_ = swap.cleanup()
 		return nil, fmt.Errorf("validate staged mod pack: %w", err)
 	}
 	return swap, nil
-}
-
-func (swap *modPackDirectorySwap) activate() error {
-	if _, err := os.Lstat(swap.destination); err == nil {
-		if err := profileRename(swap.destination, swap.backup); err != nil {
-			return fmt.Errorf("back up active mods directory: %w", err)
-		}
-		swap.hadDestination = true
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("inspect active mods directory: %w", err)
-	}
-
-	if err := profileRename(swap.staging, swap.destination); err != nil {
-		if !swap.hadDestination {
-			return fmt.Errorf("activate staged mods directory: %w", err)
-		}
-		if restoreErr := profileRename(swap.backup, swap.destination); restoreErr != nil {
-			swap.preserveRecovery = true
-			return fmt.Errorf("activate staged mods directory: %w (restore failed: %v; previous mods preserved at %s)", err, restoreErr, swap.backup)
-		}
-		return fmt.Errorf("activate staged mods directory: %w (previous mods restored)", err)
-	}
-	swap.active = true
-	return nil
-}
-
-func (swap *modPackDirectorySwap) rollback() error {
-	if !swap.active {
-		return nil
-	}
-	if err := profileRename(swap.destination, swap.staging); err != nil {
-		swap.preserveRecovery = true
-		return fmt.Errorf("move rejected mods out of active path: %w (previous mods preserved at %s)", err, swap.backup)
-	}
-	if swap.hadDestination {
-		if err := profileRename(swap.backup, swap.destination); err != nil {
-			swap.preserveRecovery = true
-			return fmt.Errorf("restore previous mods directory: %w (previous mods preserved at %s; rejected mods preserved at %s)", err, swap.backup, swap.staging)
-		}
-	}
-	swap.active = false
-	return nil
-}
-
-func (swap *modPackDirectorySwap) commit() error {
-	swap.active = false
-	if !swap.hadDestination {
-		return nil
-	}
-	if err := os.RemoveAll(swap.backup); err != nil {
-		return fmt.Errorf("remove previous mods backup: %w", err)
-	}
-	return nil
-}
-
-func (swap *modPackDirectorySwap) cleanup() error {
-	if swap.active || swap.preserveRecovery {
-		return nil
-	}
-	return errors.Join(os.RemoveAll(swap.staging), os.RemoveAll(swap.backup))
 }

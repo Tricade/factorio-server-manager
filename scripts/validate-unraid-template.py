@@ -110,6 +110,8 @@ def main() -> int:
 
     cookie_config = next(config for config in configs if config.attrib.get("Target") == "FSM_COOKIE_SECURE")
     assert cookie_config.attrib.get("Default") == "false", "direct Unraid HTTP requires a non-Secure session cookie"
+    upload_config = next(config for config in configs if config.attrib.get("Target") == "FSM_MAX_UPLOAD")
+    assert upload_config.attrib.get("Default") == "512", "Unraid save uploads require the 512 MiB default"
     rcon_config = next(config for config in configs if config.attrib.get("Target") == "RCON_PASS")
     assert rcon_config.attrib.get("Default") == "", "RCON must default to generated credentials"
     assert rcon_config.attrib.get("Mask") == "true", "RCON input must be masked"

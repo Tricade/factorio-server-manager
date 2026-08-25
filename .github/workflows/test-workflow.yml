@@ -61,15 +61,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Test release replacement on mounted Factorio directory
+      - name: Test replacement operations on mounted Factorio directories
         run: |
           docker run --rm \
             --mount type=bind,source="$PWD/src",target=/workspace,readonly \
             --mount type=tmpfs,destination=/opt/factorio \
+            --mount type=tmpfs,destination=/opt/factorio/mods \
             --env FSM_TEST_MOUNTED_FACTORIO_DIR=/opt/factorio \
+            --env FSM_TEST_MOUNTED_MODS_DIR=/opt/factorio/mods \
             --workdir /workspace \
             golang:1.25.14-bookworm@sha256:3b4a11519ad929d1e1d261a12cff056f0c85b735253d7d861346b9c6f8b36437 \
-            go test ./factorio -run '^TestReplaceReleaseFilesAtMountedDestination$' -count=1 -v
+            go test ./factorio -run '^(TestDeleteAllModsAtMountedDestination|TestReplaceReleaseFilesAtMountedDestination)$' -count=1 -v
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
       - name: Build production container
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7

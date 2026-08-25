@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- Raised the default per-file upload limit from 20 MiB to 512 MiB and exposed `FSM_MAX_UPLOAD` in the Unraid template and Docker examples so existing Factorio saves can be uploaded without custom container arguments.
+
+### Fixed
+- Fixed save-upload size enforcement to allow multipart framing overhead and return/log the configured limit when an upload is too large.
+- Fixed deleting, importing and activating mod sets with the split Unraid layout by replacing entries inside `/opt/factorio/mods` instead of attempting to rename the persistent mount point.
+
 ## [0.17.0] - 2026-08-23
 
 ### Added

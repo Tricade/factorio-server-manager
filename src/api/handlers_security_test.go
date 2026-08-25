@@ -20,6 +20,11 @@ func TestReadRequestBodyRejectsOversizedJSON(t *testing.T) {
 	assert.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
 }
 
+func TestMultipartRequestLimitAllowsEncodingOverhead(t *testing.T) {
+	assert.Equal(t, int64(21*1024*1024), maximumMultipartRequestSize(20*1024*1024))
+	assert.Equal(t, "Save file exceeds the configured upload limit of 20 MiB", uploadLimitMessage("Save file", 20*1024*1024))
+}
+
 func TestServerSettingsForViewerRedactsCredentials(t *testing.T) {
 	settings := map[string]interface{}{
 		"name":                   "Public factory",

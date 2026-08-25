@@ -117,7 +117,7 @@ To run several Factorio servers at once, run several manager containers. Every c
 
 1. Copy `docker/.env.registry.example` to `docker/.env.registry`.
 2. Set `FSM_IMAGE` to a published image such as `ghcr.io/tricade/factorio-server-manager:latest` or an immutable SemVer tag.
-3. Choose the first-install `FACTORIO_VERSION`: `latest`, `stable` or an exact three-part release. Leave `RCON_PASS` empty to generate and persist a random localhost-only value, or supply your own long random value.
+3. Choose the first-install `FACTORIO_VERSION`: `latest`, `stable` or an exact three-part release. `FSM_MAX_UPLOAD` defaults to `512` MiB per save, mod or mod-pack upload. Leave `RCON_PASS` empty to generate and persist a random localhost-only value, or supply your own long random value.
 4. Start the container:
 
 ```sh
