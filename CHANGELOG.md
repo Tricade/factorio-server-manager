@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 - Fixed save-upload size enforcement to allow multipart framing overhead and return/log the configured limit when an upload is too large.
 - Fixed deleting, importing and activating mod sets with the split Unraid layout by replacing entries inside `/opt/factorio/mods` instead of attempting to rename the persistent mount point.
+- Fixed Factorio rich-text icon placeholders appearing verbatim in factory-map surface and space-platform labels.
 
 ## [0.17.0] - 2026-08-23
 
