@@ -1,0 +1,126 @@
+name: Feature request
+description: Propose a user-visible capability or workflow improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem and desired outcome before prescribing an implementation. Factorio Server Control supports one managed Factorio process and one active profile at a time; proposals must preserve the documented storage, lifecycle, privacy and compatibility boundaries.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checks
+      options:
+        - label: I searched open and closed issues for an existing request or rejected alternative.
+          required: true
+        - label: This request is about Factorio Server Control rather than general Factorio gameplay or mod support.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or limitation
+      description: Who is affected, what are they trying to accomplish and why is the current workflow insufficient?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Desired outcome
+      description: Describe the observable result and where users would access it. Implementation ideas may be included after the outcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Example user workflow
+      description: Walk through a realistic end-to-end use case, including relevant server stopped/running and profile states.
+      placeholder: |
+        1. An administrator opens ...
+        2. The manager shows ...
+        3. The administrator confirms ...
+        4. The manager ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected areas
+      multiple: true
+      options:
+        - Web interface
+        - Factorio process lifecycle
+        - Profiles, saves or checkpoints
+        - Mods or Mod Portal
+        - Factory maps
+        - Docker or Unraid deployment
+        - API or integrations
+        - Documentation
+        - Security or privacy
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Explain current workarounds and why they do not solve the problem adequately.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: List concrete outcomes that would make the request complete and testable.
+      placeholder: |
+        - [ ] Administrators can ...
+        - [ ] Viewer access remains read-only.
+        - [ ] Existing profiles continue to ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and migration impact
+      description: Consider existing profiles, saves, APIs, FSM_* variables, combined/split mounts and rollback. Write "No expected impact" with a reason when appropriate.
+    validations:
+      required: true
+
+  - type: textarea
+    id: security_privacy
+    attributes:
+      label: Security, privacy and outbound traffic
+      description: Identify any new credentials, permissions, uploaded data, telemetry or external services. Write "No expected impact" with a reason when appropriate.
+    validations:
+      required: true
+
+  - type: textarea
+    id: deployment_documentation
+    attributes:
+      label: Deployment and documentation impact
+      description: Note required Docker, Unraid, environment, API, screenshot or user-documentation changes. Write "Not applicable" when none are expected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add mockups, references or sanitized examples that clarify the request.
+
+  - type: checkboxes
+    id: safety_confirmation
+    attributes:
+      label: Sensitive-data check
+      options:
+        - label: I reviewed this request and removed credentials, tokens, cookies, private hostnames and personal data.
+          required: true

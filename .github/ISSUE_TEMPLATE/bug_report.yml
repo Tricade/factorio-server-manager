@@ -1,0 +1,156 @@
+name: Bug report
+description: Report a reproducible problem with Factorio Server Control
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Factorio Server Control. Please complete every required field with enough surrounding context to reproduce the problem.
+
+        Never include passwords, session cookies, Factorio portal tokens, RCON secrets, the one-time administrator credential, private hostnames or private save files. Redact sensitive values while preserving setting names and log structure.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checks
+      options:
+        - label: I searched the existing open and closed issues for the same problem.
+          required: true
+        - label: I can reproduce this on the version and deployment described below.
+          required: true
+
+  - type: input
+    id: manager_version
+    attributes:
+      label: Factorio Server Control version
+      description: Use the exact version shown in the UI or the immutable container image tag. Do not write only "latest".
+      placeholder: "0.17.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Unraid Community Applications
+        - Docker Compose
+        - Docker CLI
+        - Native Linux
+        - Native Windows
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: host_environment
+    attributes:
+      label: Host environment
+      description: Include the operating system and version, CPU architecture and container runtime version when applicable.
+      placeholder: "Unraid 7.1.2, linux/amd64, Docker 27.5.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: persistence_layout
+    attributes:
+      label: Factorio persistence layout
+      description: Choose the layout inside the container, not only the host paths.
+      options:
+        - Combined /opt/factorio mount
+        - Split saves, mods and config mounts
+        - Native or non-container installation
+        - Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: factorio_version
+    attributes:
+      label: Factorio version and release target
+      description: Include the exact installed version and whether the profile targets Stable, Experimental or an exact version.
+      placeholder: "2.0.72, Stable"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: game_mode
+    attributes:
+      label: Active game mode
+      options:
+        - Factorio base game
+        - Space Age
+        - Custom built-in mod selection
+        - Unknown or not applicable
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: Required only for UI-specific problems.
+      placeholder: "Firefox 142.0"
+
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Actual behavior
+      description: Describe exactly what the UI, API and Factorio process do, including visible status or error messages.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: Describe the result you expected after the same actions.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Start from a known state and include every relevant profile, save, game-mode and server-running transition.
+      placeholder: |
+        1. Stop the Factorio server.
+        2. Open ...
+        3. Select ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log window
+      description: Paste one continuous, relevant log window with timestamps and surrounding context (usually 30-100 lines), not only the final error line. Include manager startup/configuration lines when deployment or storage may be involved. Write "No relevant log output" if nothing is emitted. Redact secrets.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Relevant sanitized configuration
+      description: Include non-secret FSM_* values, container mount destinations, permissions and profile/save/mod details needed to reproduce the problem. Never paste conf.json, credentials or tokens. Write "Not applicable" when none are relevant.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional evidence
+      description: Add screenshots, browser console/network errors or a minimal sanitized example. Do not upload private saves or configuration files unless a maintainer requests a safe subset.
+
+  - type: checkboxes
+    id: safety_confirmation
+    attributes:
+      label: Sensitive-data check
+      options:
+        - label: I reviewed this report and removed credentials, tokens, cookies, private hostnames and personal data.
+          required: true
