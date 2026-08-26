@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.4] - 2026-08-26
+
 ### Fixed
 - Fixed authenticated save-mod imports failing with Factorio's `Token mismatch` error by supplying the stored Mod Portal username and user key to the isolated headless `--sync-mods` workspace; the password is not retained, process arguments remain secret-free and failed inspection still preserves the active mods and game mode.
 
