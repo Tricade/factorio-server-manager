@@ -529,7 +529,7 @@ func generateActiveMapSnapshot(expectedProfileID string) error {
 		return err
 	}
 	configPath := filepath.Join(workDirectory, "config.ini")
-	if err := writeMapSnapshotFactorioConfig(configPath, bootstrap.GetConfig().FactorioDir, writeDataDirectory); err != nil {
+	if err := writeIsolatedFactorioConfig(configPath, bootstrap.GetConfig().FactorioDir, writeDataDirectory); err != nil {
 		return err
 	}
 
@@ -818,21 +818,6 @@ func enableMapSnapshotExporter(path string) error {
 	}
 	document["mods"] = rawMods
 	return writeMapSnapshotJSONAtomically(path, document, 0600)
-}
-
-func writeMapSnapshotFactorioConfig(path, factorioDirectory, writeDataDirectory string) error {
-	for _, value := range []string{factorioDirectory, writeDataDirectory} {
-		if strings.ContainsAny(value, "\r\n") {
-			return errors.New("Factorio path contains a line break")
-		}
-	}
-	readData := filepath.ToSlash(filepath.Join(factorioDirectory, "data"))
-	writeData := filepath.ToSlash(writeDataDirectory)
-	contents := fmt.Sprintf("[path]\nread-data=%s\nwrite-data=%s\n", readData, writeData)
-	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
-		return fmt.Errorf("write isolated Factorio config: %w", err)
-	}
-	return nil
 }
 
 func readMapSnapshotExporterManifest(directory string) (mapSnapshotExporterManifest, error) {
