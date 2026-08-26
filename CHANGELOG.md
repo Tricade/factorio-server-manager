@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-08-26
+
 ### Added
 - Added structured bug-report and feature-request forms plus a pull-request template, with CI checks for required diagnostic, compatibility, security and verification fields.
 
