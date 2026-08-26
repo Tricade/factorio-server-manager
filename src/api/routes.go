@@ -42,7 +42,8 @@ func ProfileDataMiddleware(next http.Handler) http.Handler {
 		// Start owns the shared profile-data lock until the child process is
 		// launched. Taking it here as well could deadlock behind a queued writer.
 		modPackLoadOwnsLock := strings.HasPrefix(path, "/api/mods/packs/") && strings.HasSuffix(path, "/load")
-		if strings.HasPrefix(path, "/api/profiles") || path == "/api/server/start" || modPackLoadOwnsLock {
+		saveModImportOwnsLock := path == "/api/saves/mods/import"
+		if strings.HasPrefix(path, "/api/profiles") || path == "/api/server/start" || modPackLoadOwnsLock || saveModImportOwnsLock {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -331,6 +332,12 @@ var apiRoutes = Routes{
 		"POST",
 		"/saves/mods",
 		LoadModsFromSaveHandler,
+		true,
+	}, {
+		"ImportModsFromSave",
+		"POST",
+		"/saves/mods/import",
+		ImportModsFromSaveHandler,
 		true,
 	}, {
 		"ListCheckpoints",

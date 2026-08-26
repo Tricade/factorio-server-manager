@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+
+	"github.com/OpenFactorioServerManager/factorio-server-manager/bootstrap"
 )
 
 const (
@@ -59,6 +62,30 @@ func OpenArchiveFile(path string, openNames ...string) (r io.ReadCloser, err err
 
 	archive.Close()
 	return nil, os.ErrNotExist
+}
+
+// ReadSaveHeader resolves a profile-scoped save by its portable filename,
+// rejects non-regular or structurally invalid archives and decodes the first
+// Factorio level header it contains.
+func ReadSaveHeader(name string) (SaveHeader, error) {
+	if _, err := FindSave(name); err != nil {
+		return SaveHeader{}, err
+	}
+	path := filepath.Join(bootstrap.GetConfig().FactorioSavesDir, name)
+	if err := ValidateSaveArchive(path); err != nil {
+		return SaveHeader{}, fmt.Errorf("invalid Factorio save archive: %w", err)
+	}
+	file, err := OpenArchiveFile(path, "level.dat", "level-init.dat")
+	if err != nil {
+		return SaveHeader{}, fmt.Errorf("open save level file: %w", err)
+	}
+	defer file.Close()
+
+	var header SaveHeader
+	if err := header.DecodeFrom(file); err != nil {
+		return SaveHeader{}, fmt.Errorf("read save header: %w", err)
+	}
+	return header, nil
 }
 
 type SaveHeader struct {
