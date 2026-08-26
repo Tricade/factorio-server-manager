@@ -38,12 +38,20 @@ func ImportModsFromSave(saveName string) (ModsResultList, error) {
 		return ModsResultList{}, err
 	}
 	savePath := filepath.Join(config.FactorioSavesDir, saveName)
+	var credentials Credentials
+	authenticated, err := credentials.Load()
+	if err != nil {
+		return ModsResultList{}, fmt.Errorf("load Factorio Mod Portal credentials: %w", err)
+	}
+	if !authenticated {
+		return ModsResultList{}, errors.New("Factorio Mod Portal authentication is required to import mods from a save")
+	}
 
 	// Keep the executable and its built-in data stable while Factorio inspects
 	// the isolated save and the manager validates the requested built-ins.
 	factorioProgramFilesGate.RLock()
 	defer factorioProgramFilesGate.RUnlock()
-	requested, err := discoverSaveModsWithFactorio(savePath, config.FactorioDir, runSaveModSync)
+	requested, err := discoverSaveModsWithFactorio(savePath, config.FactorioDir, credentials, runSaveModSync)
 	if err != nil {
 		return ModsResultList{}, err
 	}

@@ -30,17 +30,25 @@ type synchronizedSaveModList struct {
 	Mods []synchronizedSaveMod `json:"mods"`
 }
 
+type isolatedFactorioPlayerData struct {
+	ServiceUsername string `json:"service-username"`
+	ServiceToken    string `json:"service-token"`
+}
+
 // discoverSaveModsWithFactorio asks the installed Factorio executable to read
 // the save's current mod state. level-init.dat describes the world at creation
 // time and is therefore stale after later game-version or mod changes.
 //
-// Factorio receives only an isolated save copy, empty mod directory and private
-// write-data directory. It can describe required community mods without
-// changing the playable save or active profile; the manager still owns all
-// authenticated downloads and transactional activation.
-func discoverSaveModsWithFactorio(savePath, factorioDirectory string, runner saveModSyncRunner) ([]Mod, error) {
+// Factorio receives only an isolated save copy, empty mod directory, private
+// write-data directory and the stored Mod Portal service credential required
+// by headless --sync-mods. The password is never retained or passed to the
+// process, and the complete workspace is removed before this function returns.
+func discoverSaveModsWithFactorio(savePath, factorioDirectory string, credentials Credentials, runner saveModSyncRunner) ([]Mod, error) {
 	if runner == nil {
 		return nil, errors.New("Factorio save-mod inspector is not configured")
+	}
+	if strings.TrimSpace(credentials.Username) == "" || strings.TrimSpace(credentials.Userkey) == "" {
+		return nil, errors.New("Factorio Mod Portal authentication is required to import mods from a save")
 	}
 	if err := ValidateSaveArchive(savePath); err != nil {
 		return nil, fmt.Errorf("validate save before mod inspection: %w", err)
@@ -67,6 +75,9 @@ func discoverSaveModsWithFactorio(savePath, factorioDirectory string, runner sav
 	if err := writeIsolatedFactorioConfig(configPath, factorioDirectory, writeDataDirectory); err != nil {
 		return nil, err
 	}
+	if err := writeIsolatedFactorioPlayerData(filepath.Join(writeDataDirectory, "player-data.json"), credentials); err != nil {
+		return nil, err
+	}
 
 	args := []string{
 		"--config", configPath,
@@ -77,6 +88,20 @@ func discoverSaveModsWithFactorio(savePath, factorioDirectory string, runner sav
 		return nil, fmt.Errorf("inspect save mods with Factorio: %w", err)
 	}
 	return readSynchronizedSaveMods(filepath.Join(modsDirectory, "mod-list.json"), factorioDirectory)
+}
+
+func writeIsolatedFactorioPlayerData(path string, credentials Credentials) error {
+	document, err := json.Marshal(isolatedFactorioPlayerData{
+		ServiceUsername: credentials.Username,
+		ServiceToken:    credentials.Userkey,
+	})
+	if err != nil {
+		return fmt.Errorf("encode isolated Factorio Mod Portal credentials: %w", err)
+	}
+	if err := os.WriteFile(path, document, 0600); err != nil {
+		return fmt.Errorf("write isolated Factorio Mod Portal credentials: %w", err)
+	}
+	return nil
 }
 
 func readSynchronizedSaveMods(path, factorioDirectory string) ([]Mod, error) {
