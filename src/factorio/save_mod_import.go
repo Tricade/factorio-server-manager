@@ -20,31 +20,48 @@ const (
 
 type saveModPortalInstaller func(*Mods, Mod) error
 
+const (
+	saveModImportSkipReleaseUnavailable      = "release-unavailable"
+	saveModImportSkipArchiveIdentityMismatch = "archive-identity-mismatch"
+)
+
+type SaveModImportSkipped struct {
+	Name    string  `json:"name"`
+	Version Version `json:"version"`
+	Reason  string  `json:"reason"`
+}
+
+type SaveModImportResult struct {
+	ModsResult []ModsResult           `json:"mods"`
+	Skipped    []SaveModImportSkipped `json:"skipped"`
+}
+
 // ImportModsFromSave replaces the active profile's mod set with the enabled
-// mods recorded in a save. The complete replacement is staged below the
-// mounted mods directory and becomes visible only after every required Mod
-// Portal archive and built-in feature has been validated.
-func ImportModsFromSave(saveName string) (ModsResultList, error) {
+// mods recorded in a save. The replacement is staged below the mounted mods
+// directory and becomes visible only after every available Mod Portal archive
+// and built-in feature has been validated. Permanently unavailable releases
+// and mismatched portal archives are omitted and reported in the result.
+func ImportModsFromSave(saveName string) (SaveModImportResult, error) {
 	profileDataGate.RLock()
 	defer profileDataGate.RUnlock()
 	serverLifecycleMutex.Lock()
 	defer serverLifecycleMutex.Unlock()
 	if GetFactorioServer().IsBusy() {
-		return ModsResultList{}, ErrServerActive
+		return SaveModImportResult{}, ErrServerActive
 	}
 
 	config := bootstrap.GetConfig()
 	if _, err := FindSave(saveName); err != nil {
-		return ModsResultList{}, err
+		return SaveModImportResult{}, err
 	}
 	savePath := filepath.Join(config.FactorioSavesDir, saveName)
 	var credentials Credentials
 	authenticated, err := credentials.Load()
 	if err != nil {
-		return ModsResultList{}, fmt.Errorf("load Factorio Mod Portal credentials: %w", err)
+		return SaveModImportResult{}, fmt.Errorf("load Factorio Mod Portal credentials: %w", err)
 	}
 	if !authenticated {
-		return ModsResultList{}, errors.New("Factorio Mod Portal authentication is required to import mods from a save")
+		return SaveModImportResult{}, errors.New("Factorio Mod Portal authentication is required to import mods from a save")
 	}
 
 	// Keep the executable and its built-in data stable while Factorio inspects
@@ -53,42 +70,43 @@ func ImportModsFromSave(saveName string) (ModsResultList, error) {
 	defer factorioProgramFilesGate.RUnlock()
 	requested, err := discoverSaveModsWithFactorio(savePath, config.FactorioDir, credentials, runSaveModSync)
 	if err != nil {
-		return ModsResultList{}, err
+		return SaveModImportResult{}, err
 	}
 	return replaceModsFromSave(config.FactorioDir, config.FactorioModsDir, requested, installSaveModFromPortal)
 }
 
-func replaceModsFromSave(factorioDirectory, destination string, requested []Mod, installPortal saveModPortalInstaller) (ModsResultList, error) {
+func replaceModsFromSave(factorioDirectory, destination string, requested []Mod, installPortal saveModPortalInstaller) (SaveModImportResult, error) {
 	requested, err := validateSaveModImport(requested)
 	if err != nil {
-		return ModsResultList{}, err
+		return SaveModImportResult{}, err
 	}
 	if installPortal == nil {
-		return ModsResultList{}, errors.New("save mod portal installer is not configured")
+		return SaveModImportResult{}, errors.New("save mod portal installer is not configured")
 	}
 
 	swap, err := newDirectoryEntrySwap(destination, ".mods-save-import-staging-", ".mods-save-import-backup-")
 	if err != nil {
-		return ModsResultList{}, fmt.Errorf("stage save mod import: %w", err)
+		return SaveModImportResult{}, fmt.Errorf("stage save mod import: %w", err)
 	}
 	defer swap.cleanup()
 
 	staged, err := NewMods(swap.staging)
 	if err != nil {
-		return ModsResultList{}, fmt.Errorf("initialize staged save mod import: %w", err)
+		return SaveModImportResult{}, fmt.Errorf("initialize staged save mod import: %w", err)
 	}
 	enabledSpaceAgeFeatures := make([]string, 0, len(spaceAgeFeatureMods))
+	skipped := make([]SaveModImportSkipped, 0)
 	for _, mod := range requested {
 		if mod.Name == "base" || mod.Name == "core" {
 			continue
 		}
 		builtIn, err := installedBuiltInMod(factorioDirectory, mod.Name)
 		if err != nil {
-			return ModsResultList{}, err
+			return SaveModImportResult{}, err
 		}
 		if builtIn {
 			if err := staged.ModSimpleList.SetModEnabled(mod.Name, true); err != nil {
-				return ModsResultList{}, fmt.Errorf("enable built-in mod %s: %w", mod.Name, err)
+				return SaveModImportResult{}, fmt.Errorf("enable built-in mod %s: %w", mod.Name, err)
 			}
 			if isSpaceAgeFeatureMod(mod.Name) {
 				enabledSpaceAgeFeatures = append(enabledSpaceAgeFeatures, mod.Name)
@@ -96,10 +114,16 @@ func replaceModsFromSave(factorioDirectory, destination string, requested []Mod,
 			continue
 		}
 		if isSpaceAgeFeatureMod(mod.Name) {
-			return ModsResultList{}, fmt.Errorf("Space Age feature %s is not available in this Factorio installation", mod.Name)
+			return SaveModImportResult{}, fmt.Errorf("Space Age feature %s is not available in this Factorio installation", mod.Name)
 		}
 		if err := installPortal(&staged, mod); err != nil {
-			return ModsResultList{}, fmt.Errorf("stage mod %s %s: %w", mod.Name, mod.Version.String(), err)
+			reason, canSkip := saveModImportSkipReason(err)
+			if !canSkip {
+				return SaveModImportResult{}, fmt.Errorf("stage mod %s %s: %w", mod.Name, mod.Version.String(), err)
+			}
+			log.Printf("Skipping save-required mod %s %s during import: %v", mod.Name, mod.Version.String(), err)
+			skipped = append(skipped, SaveModImportSkipped{Name: mod.Name, Version: mod.Version, Reason: reason})
+			continue
 		}
 	}
 
@@ -107,20 +131,31 @@ func replaceModsFromSave(factorioDirectory, destination string, requested []Mod,
 	// Record every expansion feature explicitly so importing a base-game save
 	// cannot inherit Space Age through Factorio's built-in defaults.
 	if err := setBuiltInFeatureMods(swap.staging, enabledSpaceAgeFeatures); err != nil {
-		return ModsResultList{}, fmt.Errorf("stage imported game mode: %w", err)
+		return SaveModImportResult{}, fmt.Errorf("stage imported game mode: %w", err)
 	}
 	validated, err := NewMods(swap.staging)
 	if err != nil {
-		return ModsResultList{}, fmt.Errorf("validate staged save mod import: %w", err)
+		return SaveModImportResult{}, fmt.Errorf("validate staged save mod import: %w", err)
 	}
-	result := validated.ListInstalledMods()
+	installed := validated.ListInstalledMods()
 	if err := swap.activate(); err != nil {
-		return ModsResultList{}, fmt.Errorf("activate staged save mod import: %w", err)
+		return SaveModImportResult{}, fmt.Errorf("activate staged save mod import: %w", err)
 	}
 	if err := swap.commit(); err != nil {
 		log.Printf("Imported save mods are active but transactional backup cleanup failed: %v", err)
 	}
-	return result, nil
+	return SaveModImportResult{ModsResult: installed.ModsResult, Skipped: skipped}, nil
+}
+
+func saveModImportSkipReason(err error) (string, bool) {
+	switch {
+	case errors.Is(err, errModPortalReleaseUnavailable):
+		return saveModImportSkipReleaseUnavailable, true
+	case errors.Is(err, errModArchiveIdentityMismatch):
+		return saveModImportSkipArchiveIdentityMismatch, true
+	default:
+		return "", false
+	}
 }
 
 func validateSaveModImport(requested []Mod) ([]Mod, error) {
@@ -201,6 +236,9 @@ func isSpaceAgeFeatureMod(name string) bool {
 
 func installSaveModFromPortal(mods *Mods, requested Mod) error {
 	details, err, statusCode := ModPortalModDetails(requested.Name)
+	if statusCode == http.StatusNotFound || statusCode == http.StatusGone {
+		return fmt.Errorf("%w: Mod Portal metadata returned HTTP %d", errModPortalReleaseUnavailable, statusCode)
+	}
 	if err != nil {
 		return fmt.Errorf("load Mod Portal metadata: %w", err)
 	}
@@ -216,5 +254,5 @@ func installSaveModFromPortal(mods *Mods, requested Mod) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("requested version is not available on the Mod Portal")
+	return fmt.Errorf("%w: version %s is not listed on the Mod Portal", errModPortalReleaseUnavailable, requested.Version.String())
 }

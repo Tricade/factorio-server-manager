@@ -10,6 +10,9 @@ import Button from "../../../components/Button";
 import FactorioLogin from "./AddMod/components/FactorioLogin";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import Alert from "../../../components/Alert";
+import saveModImportFeedbackHelpers from "./saveModImportFeedback.cjs";
+
+const {saveModImportFeedback} = saveModImportFeedbackHelpers;
 
 const LoadMods = ({refreshMods}) => {
     const [saves, setSaves] = useState([]);
@@ -34,9 +37,10 @@ const LoadMods = ({refreshMods}) => {
     const loadMods = async data => {
         setIsApplying(true);
         try {
-            await savesResource.importMods(data.save);
+            const result = await savesResource.importMods(data.save);
             await refreshMods();
-            window.flash(`Mods imported from ${data.save}.`, "green");
+            const feedback = saveModImportFeedback(data.save, result);
+            window.flash(feedback.message, feedback.color);
         } catch (error) {
             window.flash(error?.response?.data || "Mods could not be loaded from this save.", "red");
         } finally {
@@ -48,7 +52,7 @@ const LoadMods = ({refreshMods}) => {
     if (!isFactorioAuthenticated) return <FactorioLogin setIsFactorioAuthenticated={setIsFactorioAuthenticated}/>;
 
     return <form onSubmit={handleSubmit(setLoadModsData)}>
-        <Alert type="warning" className="mb-4">Importing replaces every currently installed mod with the enabled mods recorded in the selected save. The current set stays active if preparation fails.</Alert>
+        <Alert type="warning" className="mb-4">Importing replaces every currently installed mod with the enabled mods recorded in the selected save. Unavailable releases or mismatched Mod Portal archives are skipped and reported. Other preparation failures leave the current set active.</Alert>
         <div className="mb-4">
             <Label text="Source save" htmlFor="save"/>
             <Select register={register("save", {required: true})} disabled={saves.length === 0 || isApplying} options={saves.map(save => ({name: save.name, value: save.name}))}/>
@@ -56,7 +60,7 @@ const LoadMods = ({refreshMods}) => {
         <Button isSubmit isDisabled={saves.length === 0} isLoading={isApplying}><FontAwesomeIcon icon={faFileImport}/> Review import</Button>
         <ConfirmDialog
             title="Replace installed mods?"
-            content={`Importing from "${loadModsData?.save || ""}" prepares the complete replacement before activating it.`}
+            content={`Importing from "${loadModsData?.save || ""}" prepares an atomic replacement before activating it. Unavailable releases or mismatched archives will be skipped.`}
             isOpen={Boolean(loadModsData)}
             close={() => setLoadModsData(undefined)}
             onSuccess={() => loadMods(loadModsData)}

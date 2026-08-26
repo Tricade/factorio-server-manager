@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"mime/multipart"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -183,7 +184,10 @@ func (mods *Mods) DownloadMod(downloadPath string, filename string, modId string
 
 	defer response.Body.Close()
 
-	if response.StatusCode != 200 {
+	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusGone {
+		return fmt.Errorf("%w: mod portal download returned HTTP %d", errModPortalReleaseUnavailable, response.StatusCode)
+	}
+	if response.StatusCode != http.StatusOK {
 		log.Printf("StatusCode: %d", response.StatusCode)
 		body, _ := readBoundedBody(response.Body, maximumModPortalErrorBodyBytes)
 		return fmt.Errorf("mod portal download returned HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
