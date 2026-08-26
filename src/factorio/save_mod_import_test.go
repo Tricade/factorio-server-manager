@@ -1,8 +1,13 @@
 package factorio
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -321,6 +326,132 @@ func TestReplaceModsFromSaveFailurePreservesActiveMods(t *testing.T) {
 	assertNoSaveImportTransactionEntries(t, activeMods)
 }
 
+func TestReplaceModsFromSaveSkipsUnavailablePortalMods(t *testing.T) {
+	root := t.TempDir()
+	factorioDirectory := filepath.Join(root, "factorio")
+	activeMods := filepath.Join(factorioDirectory, "mods")
+	if err := os.MkdirAll(activeMods, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(activeMods, "old-marker.txt"), []byte("old mods"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(activeMods, "mod-list.json"), []byte(`{"mods":[{"name":"base","enabled":true}]}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	requested := []Mod{
+		{Name: "base", Version: Version{2, 0, 72, 0}},
+		{Name: "available-mod", Version: Version{1, 2, 3, 0}},
+		{Name: "Aircraft", Version: Version{1, 8, 6, 0}},
+		{Name: "Laser_Tanks_kr", Version: Version{1, 0, 1, 0}},
+	}
+	result, err := replaceModsFromSave(factorioDirectory, activeMods, requested, func(staged *Mods, mod Mod) error {
+		switch mod.Name {
+		case "available-mod":
+			return installSaveImportTestMod(t, staged, mod)
+		case "Aircraft":
+			return fmt.Errorf("%w: requested version", errModPortalReleaseUnavailable)
+		case "Laser_Tanks_kr":
+			return fmt.Errorf("%w: portal archive metadata", errModArchiveIdentityMismatch)
+		default:
+			return fmt.Errorf("unexpected portal mod %s", mod.Name)
+		}
+	})
+	if err != nil {
+		t.Fatalf("replace mods with unavailable portal releases: %v", err)
+	}
+	if len(result.ModsResult) != 1 || result.ModsResult[0].Name != "available-mod" {
+		t.Fatalf("available mod was not activated: %#v", result.ModsResult)
+	}
+	expectedSkipped := []SaveModImportSkipped{
+		{Name: "Aircraft", Version: Version{1, 8, 6, 0}, Reason: saveModImportSkipReleaseUnavailable},
+		{Name: "Laser_Tanks_kr", Version: Version{1, 0, 1, 0}, Reason: saveModImportSkipArchiveIdentityMismatch},
+	}
+	if len(result.Skipped) != len(expectedSkipped) {
+		t.Fatalf("unexpected skipped mods: %#v", result.Skipped)
+	}
+	for index, expected := range expectedSkipped {
+		if result.Skipped[index] != expected {
+			t.Errorf("skipped mod %d = %#v, want %#v", index, result.Skipped[index], expected)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(activeMods, "old-marker.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("previous mod entry was not replaced: %v", err)
+	}
+	assertNoSaveImportTransactionEntries(t, activeMods)
+}
+
+func TestInstallSaveModFromPortalClassifiesOnlyPermanentUnavailability(t *testing.T) {
+	portal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/mods/Aircraft/full":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"name":"Aircraft","releases":[{"version":"1.9.0","download_url":"/download/Aircraft/current","file_name":"Aircraft_1.9.0.zip","info_json":{"factorio_version":"2.0"}}]}`))
+		case "/api/mods/removed-mod/full":
+			w.WriteHeader(http.StatusGone)
+		case "/api/mods/portal-failure/full":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer portal.Close()
+
+	originalBaseURL := modPortalBaseURL
+	modPortalBaseURL = portal.URL
+	defer func() { modPortalBaseURL = originalBaseURL }()
+
+	for name, requested := range map[string]Mod{
+		"missing exact version": {Name: "Aircraft", Version: Version{1, 8, 6, 0}},
+		"removed mod":           {Name: "removed-mod", Version: Version{1, 0, 0, 0}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := installSaveModFromPortal(nil, requested)
+			if !errors.Is(err, errModPortalReleaseUnavailable) {
+				t.Fatalf("unavailable release was not classified for skipping: %v", err)
+			}
+		})
+	}
+
+	err := installSaveModFromPortal(nil, Mod{Name: "portal-failure", Version: Version{1, 0, 0, 0}})
+	if err == nil || errors.Is(err, errModPortalReleaseUnavailable) {
+		t.Fatalf("transient portal failure was treated as skippable: %v", err)
+	}
+}
+
+func TestSaveModImportResultEncodesSkippedVersionsForTheUI(t *testing.T) {
+	result := SaveModImportResult{
+		ModsResult: []ModsResult{},
+		Skipped: []SaveModImportSkipped{{
+			Name:    "Aircraft",
+			Version: Version{1, 8, 6, 0},
+			Reason:  saveModImportSkipReleaseUnavailable,
+		}},
+	}
+	contents, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response struct {
+		Mods    []ModsResult `json:"mods"`
+		Skipped []struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+			Reason  string `json:"reason"`
+		} `json:"skipped"`
+	}
+	if err := json.Unmarshal(contents, &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Mods == nil {
+		t.Fatal("mods encoded as null instead of an array")
+	}
+	if len(response.Skipped) != 1 || response.Skipped[0].Name != "Aircraft" || response.Skipped[0].Version != "1.8.6.0" || response.Skipped[0].Reason != saveModImportSkipReleaseUnavailable {
+		t.Fatalf("unexpected save-mod import response: %s", contents)
+	}
+}
+
 // This test is enabled by the Docker integration command. Its destination is
 // a nested tmpfs mount matching the split /opt/factorio/mods mount used by the
 // Unraid template.
@@ -419,6 +550,32 @@ func saveImportArgument(t *testing.T, args []string, name string) string {
 	}
 	t.Fatalf("Factorio argument %s is missing from %#v", name, args)
 	return ""
+}
+
+func installSaveImportTestMod(t *testing.T, staged *Mods, mod Mod) error {
+	t.Helper()
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	entry, err := writer.Create(mod.Name + "/info.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := json.Marshal(ModInfo{
+		Name:    mod.Name,
+		Version: mod.Version.ReleaseString(),
+		Title:   mod.Name,
+		Author:  "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write(metadata); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return staged.createMod(mod.Name, mod.Name+"_"+mod.Version.ReleaseString()+".zip", bytes.NewReader(archive.Bytes()))
 }
 
 func assertSaveImportMods(t *testing.T, actual, expected []Mod) {

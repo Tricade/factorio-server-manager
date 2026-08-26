@@ -258,7 +258,7 @@ func (modInfoList *ModInfoList) createModWithLimit(modName string, fileName stri
 		return fmt.Errorf("close downloaded mod archive: %w", closeErr)
 	}
 	if stagedInfo.Name != modName {
-		return fmt.Errorf("downloaded mod metadata names %q, expected %q", stagedInfo.Name, modName)
+		return fmt.Errorf("%w: downloaded mod metadata names %q, expected %q", errModArchiveIdentityMismatch, stagedInfo.Name, modName)
 	}
 
 	FileLock.LockW(filePath)

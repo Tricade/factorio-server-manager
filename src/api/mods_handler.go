@@ -344,10 +344,10 @@ func LoadModsFromSaveHandler(w http.ResponseWriter, r *http.Request) {
 	resp = header
 }
 
-// ImportModsFromSaveHandler stages the complete mod set recorded in a save and
-// atomically activates it only after every built-in feature and portal archive
-// has been validated. A failed import therefore leaves the active profile's
-// previous mod set untouched.
+// ImportModsFromSaveHandler stages the mod set recorded in a save and
+// atomically activates all available mods after validation. Permanently
+// unavailable releases and mismatched portal archives are reported as skipped;
+// any other failed preparation leaves the active profile's previous set intact.
 func ImportModsFromSaveHandler(w http.ResponseWriter, r *http.Request) {
 	var resp interface{}
 	defer func() { WriteResponse(w, resp) }()
