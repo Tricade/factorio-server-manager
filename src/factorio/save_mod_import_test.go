@@ -1,9 +1,11 @@
 package factorio
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +25,7 @@ func TestDiscoverSaveModsWithFactorioUsesCurrentSaveState(t *testing.T) {
 	}
 
 	var workspace string
+	credentials := Credentials{Username: "portal-user", Userkey: "portal-token"}
 	runner := func(_ time.Duration, args []string) error {
 		modsDirectory := saveImportArgument(t, args, "--mod-directory")
 		synchronizedSave := saveImportArgument(t, args, "--sync-mods")
@@ -37,6 +40,33 @@ func TestDiscoverSaveModsWithFactorioUsesCurrentSaveState(t *testing.T) {
 		if err := ValidateSaveArchive(synchronizedSave); err != nil {
 			t.Fatalf("isolated save copy is invalid: %v", err)
 		}
+		playerDataPath := filepath.Join(workspace, "write-data", "player-data.json")
+		playerDataContents, err := os.ReadFile(playerDataPath)
+		if err != nil {
+			t.Fatalf("read isolated Factorio credentials: %v", err)
+		}
+		playerDataInfo, err := os.Lstat(playerDataPath)
+		if err != nil {
+			t.Fatalf("inspect isolated Factorio credentials: %v", err)
+		}
+		if !playerDataInfo.Mode().IsRegular() || playerDataInfo.Mode()&os.ModeSymlink != 0 {
+			t.Fatal("isolated Factorio credentials are not a regular file")
+		}
+		if runtime.GOOS != "windows" && playerDataInfo.Mode().Perm() != 0600 {
+			t.Fatalf("isolated Factorio credentials have permissions %04o, want 0600", playerDataInfo.Mode().Perm())
+		}
+		var playerData isolatedFactorioPlayerData
+		if err := json.Unmarshal(playerDataContents, &playerData); err != nil {
+			t.Fatalf("decode isolated Factorio credentials: %v", err)
+		}
+		if playerData.ServiceUsername != credentials.Username || playerData.ServiceToken != credentials.Userkey {
+			t.Fatal("isolated Factorio credentials do not match the stored Mod Portal credential")
+		}
+		for _, arg := range args {
+			if strings.Contains(arg, credentials.Username) || strings.Contains(arg, credentials.Userkey) {
+				t.Fatal("Mod Portal credentials were exposed in Factorio process arguments")
+			}
+		}
 		contents := []byte(`{"mods":[` +
 			`{"name":"base","enabled":true,"version":"2.0.77"},` +
 			`{"name":"elevated-rails","enabled":true,"version":"2.0.77"},` +
@@ -47,7 +77,7 @@ func TestDiscoverSaveModsWithFactorioUsesCurrentSaveState(t *testing.T) {
 		return os.WriteFile(filepath.Join(modsDirectory, "mod-list.json"), contents, 0600)
 	}
 
-	mods, err := discoverSaveModsWithFactorio(savePath, factorioDirectory, runner)
+	mods, err := discoverSaveModsWithFactorio(savePath, factorioDirectory, credentials, runner)
 	if err != nil {
 		t.Fatalf("discover current save mods: %v", err)
 	}
@@ -107,7 +137,7 @@ func TestDiscoverSaveModsWithFactorioFailureDoesNotLeaveWorkspace(t *testing.T) 
 	copySaveImportFixture(t, filepath.Join("..", "factorio_testfiles", "test_1_1_14.zip"), savePath)
 	var workspace string
 	expected := errors.New("Factorio inspection failed")
-	_, err := discoverSaveModsWithFactorio(savePath, factorioDirectory, func(_ time.Duration, args []string) error {
+	_, err := discoverSaveModsWithFactorio(savePath, factorioDirectory, Credentials{Username: "portal-user", Userkey: "portal-token"}, func(_ time.Duration, args []string) error {
 		workspace = filepath.Dir(saveImportArgument(t, args, "--mod-directory"))
 		return expected
 	})
@@ -116,6 +146,34 @@ func TestDiscoverSaveModsWithFactorioFailureDoesNotLeaveWorkspace(t *testing.T) 
 	}
 	if _, statErr := os.Stat(workspace); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("failed inspection workspace was not removed: %v", statErr)
+	}
+}
+
+func TestDiscoverSaveModsWithFactorioRequiresCompletePortalCredentials(t *testing.T) {
+	root := t.TempDir()
+	factorioDirectory := filepath.Join(root, "factorio")
+	writeSaveImportBuiltIn(t, factorioDirectory, "base")
+	savePath := filepath.Join(root, "save.zip")
+	copySaveImportFixture(t, filepath.Join("..", "factorio_testfiles", "test_1_1_14.zip"), savePath)
+
+	for name, credentials := range map[string]Credentials{
+		"missing":  {},
+		"username": {Username: "portal-user"},
+		"token":    {Userkey: "portal-token"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			runnerCalled := false
+			_, err := discoverSaveModsWithFactorio(savePath, factorioDirectory, credentials, func(_ time.Duration, _ []string) error {
+				runnerCalled = true
+				return nil
+			})
+			if err == nil || !strings.Contains(err.Error(), "authentication is required") {
+				t.Fatalf("incomplete credentials were accepted: %v", err)
+			}
+			if runnerCalled {
+				t.Fatal("Factorio ran without complete Mod Portal credentials")
+			}
+		})
 	}
 }
 
