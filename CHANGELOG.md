@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.5] - 2026-08-27
+
 ### Fixed
 - Save-mod import now installs available mods when an exact Mod Portal release is permanently unavailable or its downloaded archive identifies a different mod, and reports each skipped name, version and reason without weakening rollback for transient or systemic failures.
 
