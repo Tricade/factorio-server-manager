@@ -343,3 +343,35 @@ func LoadModsFromSaveHandler(w http.ResponseWriter, r *http.Request) {
 
 	resp = header
 }
+
+// ImportModsFromSaveHandler stages the complete mod set recorded in a save and
+// atomically activates it only after every built-in feature and portal archive
+// has been validated. A failed import therefore leaves the active profile's
+// previous mod set untouched.
+func ImportModsFromSaveHandler(w http.ResponseWriter, r *http.Request) {
+	var resp interface{}
+	defer func() { WriteResponse(w, resp) }()
+	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+
+	var request struct {
+		Name string `json:"saveFile"`
+	}
+	var err error
+	resp, err = ReadFromRequestBody(w, r, &request)
+	if err != nil {
+		return
+	}
+
+	result, err := factorio.ImportModsFromSave(request.Name)
+	if err != nil {
+		log.Printf("Unable to import mods from selected save: %v", err)
+		if errors.Is(err, factorio.ErrServerActive) {
+			w.WriteHeader(http.StatusLocked)
+		} else {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+		}
+		resp = "Mods could not be imported from the selected save; the previous mod set was preserved."
+		return
+	}
+	resp = result
+}

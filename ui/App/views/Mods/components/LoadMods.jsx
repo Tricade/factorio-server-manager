@@ -34,9 +34,7 @@ const LoadMods = ({refreshMods}) => {
     const loadMods = async data => {
         setIsApplying(true);
         try {
-            const {mods} = await savesResource.mods(data.save);
-            await modResource.deleteAll();
-            await modResource.portal.installMultiple(mods);
+            await savesResource.importMods(data.save);
             await refreshMods();
             window.flash(`Mods imported from ${data.save}.`, "green");
         } catch (error) {
@@ -50,7 +48,7 @@ const LoadMods = ({refreshMods}) => {
     if (!isFactorioAuthenticated) return <FactorioLogin setIsFactorioAuthenticated={setIsFactorioAuthenticated}/>;
 
     return <form onSubmit={handleSubmit(setLoadModsData)}>
-        <Alert type="warning" className="mb-4">Importing replaces every currently installed mod with the dependencies recorded in the selected save.</Alert>
+        <Alert type="warning" className="mb-4">Importing replaces every currently installed mod with the enabled mods recorded in the selected save. The current set stays active if preparation fails.</Alert>
         <div className="mb-4">
             <Label text="Source save" htmlFor="save"/>
             <Select register={register("save", {required: true})} disabled={saves.length === 0 || isApplying} options={saves.map(save => ({name: save.name, value: save.name}))}/>
@@ -58,7 +56,7 @@ const LoadMods = ({refreshMods}) => {
         <Button isSubmit isDisabled={saves.length === 0} isLoading={isApplying}><FontAwesomeIcon icon={faFileImport}/> Review import</Button>
         <ConfirmDialog
             title="Replace installed mods?"
-            content={`Importing from "${loadModsData?.save || ""}" removes the current mod set before downloading its dependencies.`}
+            content={`Importing from "${loadModsData?.save || ""}" prepares the complete replacement before activating it.`}
             isOpen={Boolean(loadModsData)}
             close={() => setLoadModsData(undefined)}
             onSuccess={() => loadMods(loadModsData)}

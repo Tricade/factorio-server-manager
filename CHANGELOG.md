@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Fixed importing mods from Space Age saves by recognizing installed built-in feature mods and staging the complete replacement before activation, so failed downloads preserve the previous mod set and game mode.
+
 ## [0.17.1] - 2026-08-25
 
 ### Added

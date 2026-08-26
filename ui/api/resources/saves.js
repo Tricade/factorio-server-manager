@@ -57,6 +57,12 @@ export default {
         });
         return response.data;
     },
+    importMods: async save => {
+        const response = await client.post("/api/saves/mods/import", {
+            saveFile: save
+        });
+        return response.data;
+    },
     checkpoints: {
         list: async () => {
             const response = await client.get('/api/checkpoints');
