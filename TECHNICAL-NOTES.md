@@ -29,6 +29,7 @@
 - New snapshots may persist bounded player-force entity footprints beside each surface image for a lazy browser Canvas overlay; older image-only snapshots remain valid.
 - Mod Portal search, releases and dependency resolution are restricted to the active Factorio major/minor line.
 - Required dependencies are selected automatically; optional and recommended dependencies remain explicit choices.
+- Save-mod import asks Factorio itself for the save's current mod state in an isolated workspace instead of trusting creation-time `level-init.dat` metadata; downloads and activation remain staged and rollback-safe.
 - UI version and source revision are visible in the navigation footer; the HTML entry point is cache-revalidated and uses versioned asset URLs.
 - Uploads, archive paths, credentials and logs have bounded or redacted handling appropriate for an authenticated internal administration interface.
 - SIGTERM stops new HTTP work and requests a clean Factorio shutdown within the container's three-minute grace period.
@@ -56,6 +57,12 @@ The New Game previews remain map-generation previews. The Overview's factory map
 Nothing from the temporary workspace is copied back into the profile. The playable save and active mod list therefore retain their original bytes, the server is neither stopped nor restarted, and the manager-only exporter cannot change the profile's Steam-achievement eligibility. Snapshot images and their API routes are authenticated. Manager-wide state stores the generation mode, interval, optional empty-server guard and platform inclusion preference beside other manager data.
 
 This is intentionally a periodic static view rather than a live remote-map protocol. It avoids installing a permanent companion mod, a graphical/X/OpenGL runtime and a Wube account in the manager. Factorio 2.0.61 is the minimum supported release because that version introduced `LuaForce.get_chunk_chart`. Chart pixels contain one RGB565 map-color pixel per tile, so the viewer can show terrain, buildings and routes rather than only generated-chunk occupancy, but it cannot recreate the graphical client's sprites or higher-detail entity rendering. The image remains limited to chart data available to the player force in the copied save; unexplored chunks and non-chart map state are not reconstructed by parsing `level.dat`.
+
+### Save-mod import
+
+Factorio creates `level-init.dat` with a world and does not keep that creation-time header synchronized with later game-version or mod changes. Save-mod import therefore validates and copies the selected archive into an ephemeral workspace, gives the installed Factorio executable an empty temporary mod directory plus private `write-data`, and runs the official `--sync-mods` inspection there. The playable save, active mods, profile configuration and stored Factorio credentials are never passed into that workspace.
+
+The manager validates the bounded generated `mod-list.json`, distinguishes enabled built-in features from save-required community mods whose archives are not present in the empty workspace, and only then enters the existing staged download and activation transaction. Factorio performs detection; the manager retains authenticated Mod Portal downloads, exact-version validation and rollback. A timeout, malformed result, unavailable release or failed download leaves the previous mod directory and game mode unchanged.
 
 ## Server profiles
 

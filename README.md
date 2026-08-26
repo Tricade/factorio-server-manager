@@ -60,7 +60,7 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 - Explicit base Factorio/Space Age switching, including persistent built-in feature-mod state.
 - Mod Portal search filtered to the active Factorio compatibility line.
 - Recursive required-dependency resolution plus opt-in optional/recommended dependencies.
-- Reusable mod packs and import from an existing save.
+- Reusable mod packs and engine-verified import from an existing save, including worlds created on an older Factorio release and later upgraded to Space Age or a different mod set.
 
 ### Modern interface and deployment
 

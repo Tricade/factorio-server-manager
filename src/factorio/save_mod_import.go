@@ -33,12 +33,21 @@ func ImportModsFromSave(saveName string) (ModsResultList, error) {
 		return ModsResultList{}, ErrServerActive
 	}
 
-	header, err := ReadSaveHeader(saveName)
+	config := bootstrap.GetConfig()
+	if _, err := FindSave(saveName); err != nil {
+		return ModsResultList{}, err
+	}
+	savePath := filepath.Join(config.FactorioSavesDir, saveName)
+
+	// Keep the executable and its built-in data stable while Factorio inspects
+	// the isolated save and the manager validates the requested built-ins.
+	factorioProgramFilesGate.RLock()
+	defer factorioProgramFilesGate.RUnlock()
+	requested, err := discoverSaveModsWithFactorio(savePath, config.FactorioDir, runSaveModSync)
 	if err != nil {
 		return ModsResultList{}, err
 	}
-	config := bootstrap.GetConfig()
-	return replaceModsFromSave(config.FactorioDir, config.FactorioModsDir, header.Mods, installSaveModFromPortal)
+	return replaceModsFromSave(config.FactorioDir, config.FactorioModsDir, requested, installSaveModFromPortal)
 }
 
 func replaceModsFromSave(factorioDirectory, destination string, requested []Mod, installPortal saveModPortalInstaller) (ModsResultList, error) {
@@ -86,9 +95,9 @@ func replaceModsFromSave(factorioDirectory, destination string, requested []Mod,
 		}
 	}
 
-	// Save headers list enabled mods only. Record every expansion feature
-	// explicitly so importing a base-game save cannot inherit Space Age through
-	// Factorio's built-in defaults.
+	// The synchronized list retains the enabled built-ins required by the save.
+	// Record every expansion feature explicitly so importing a base-game save
+	// cannot inherit Space Age through Factorio's built-in defaults.
 	if err := setBuiltInFeatureMods(swap.staging, enabledSpaceAgeFeatures); err != nil {
 		return ModsResultList{}, fmt.Errorf("stage imported game mode: %w", err)
 	}
@@ -108,10 +117,10 @@ func replaceModsFromSave(factorioDirectory, destination string, requested []Mod,
 
 func validateSaveModImport(requested []Mod) ([]Mod, error) {
 	if len(requested) == 0 {
-		return nil, errors.New("save header does not contain a mod list")
+		return nil, errors.New("save does not contain a usable mod list")
 	}
 	if len(requested) > maximumSaveModImportItems {
-		return nil, fmt.Errorf("save contains more than %d enabled mods", maximumSaveModImportItems)
+		return nil, fmt.Errorf("save contains more than %d mods", maximumSaveModImportItems)
 	}
 
 	validated := make([]Mod, 0, len(requested))
@@ -137,7 +146,7 @@ func validateSaveModImport(requested []Mod) ([]Mod, error) {
 		}
 	}
 	if !hasBase {
-		return nil, errors.New("save header does not contain the base mod")
+		return nil, errors.New("save mod list does not contain the base mod")
 	}
 	return validated, nil
 }
