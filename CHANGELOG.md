@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.3] - 2026-08-26
+
 ### Fixed
 - Fixed save-mod imports for worlds created on older Factorio releases and later upgraded or remodded by deriving the current exact mod set through Factorio's isolated `--sync-mods` operation instead of stale `level-init.dat` metadata; failed detection or preparation preserves the existing mods and game mode.
 
