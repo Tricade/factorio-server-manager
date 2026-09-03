@@ -158,6 +158,9 @@ func ModStartUp() {
 				if modFile.FileInfo().IsDir() {
 					continue
 				}
+				if !filepath.IsLocal(modFile.Name) {
+					return fmt.Errorf("legacy mod pack contains invalid entry %q", modFile.Name)
+				}
 				if err := ValidatePathElement(modFile.Name); err != nil || filepath.Base(modFile.Name) != modFile.Name || !strings.EqualFold(filepath.Ext(modFile.Name), ".zip") {
 					return fmt.Errorf("legacy mod pack contains invalid entry %q", modFile.Name)
 				}

@@ -496,6 +496,9 @@ func (planner *modDependencyPlanner) getDetails(name string) (ModPortalStruct, e
 }
 
 func (planner *modDependencyPlanner) readBuiltInMod(name string) (builtInModInfo, bool, error) {
+	if !filepath.IsLocal(name) {
+		return builtInModInfo{}, false, fmt.Errorf("invalid built-in mod name %q", name)
+	}
 	if err := ValidatePathElement(name); err != nil {
 		return builtInModInfo{}, false, fmt.Errorf("invalid built-in mod name %q: %w", name, err)
 	}

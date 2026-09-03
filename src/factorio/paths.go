@@ -3,6 +3,7 @@ package factorio
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"unicode"
 )
@@ -12,6 +13,9 @@ import (
 func ValidatePathElement(name string) error {
 	if name == "" || name == "." || name == ".." {
 		return errors.New("name must not be empty or relative")
+	}
+	if !filepath.IsLocal(name) {
+		return errors.New("name must be a local path element")
 	}
 	if strings.ContainsAny(name, `<>:"/\\|?*`) {
 		return errors.New("name contains a character forbidden in portable filenames")

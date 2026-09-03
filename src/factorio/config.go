@@ -3,7 +3,7 @@ package factorio
 import (
 	"log"
 
-	"github.com/go-ini/ini"
+	ini "gopkg.in/ini.v1"
 )
 
 // Loads config.ini file from the factorio bootstrap directory

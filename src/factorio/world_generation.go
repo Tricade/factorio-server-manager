@@ -237,6 +237,9 @@ func CreateWorld(request WorldGenerationRequest) (Save, error) {
 	if err := os.MkdirAll(config.FactorioSavesDir, 0755); err != nil {
 		return Save{}, fmt.Errorf("create saves directory: %w", err)
 	}
+	if !filepath.IsLocal(normalized.Name) {
+		return Save{}, errors.New("save name must be a local filename")
+	}
 	finalPath := filepath.Join(config.FactorioSavesDir, normalized.Name)
 	if _, err := os.Stat(finalPath); err == nil {
 		return Save{}, ErrSaveAlreadyExists
