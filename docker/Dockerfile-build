@@ -1,10 +1,7 @@
-FROM alpine:3.23 AS build
+FROM golang:1.26.8-alpine3.23@sha256:33ce311e5eecedee48ec1b84419c1306e9fbd71009f0d5c3f2a6904b579c1ecc AS build
 
-RUN apk add --no-cache git make musl-dev go nodejs npm zip mingw-w64-gcc
+RUN apk add --no-cache git make musl-dev nodejs npm zip mingw-w64-gcc
 
-ENV GOROOT /usr/lib/go
-ENV GOPATH /go
-ENV PATH /go/bin:$PATH
 ENV FACTORIO_ROOT /go/src/factorio-server-manager
 
 COPY docker/build-release.sh /usr/local/bin/build-release.sh

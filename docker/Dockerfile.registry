@@ -3,7 +3,7 @@
 ARG VERSION="dev"
 ARG VCS_REF="unknown"
 
-FROM --platform=$BUILDPLATFORM node:24-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS frontend-build
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS frontend-build
 
 ARG VERSION
 ARG VCS_REF
@@ -21,7 +21,7 @@ COPY ui ./ui
 RUN npm run build
 
 
-FROM --platform=$BUILDPLATFORM golang:1.25.14-bookworm@sha256:3b4a11519ad929d1e1d261a12cff056f0c85b735253d7d861346b9c6f8b36437 AS backend-build
+FROM --platform=$BUILDPLATFORM golang:1.26.8-bookworm@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 AS backend-build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -54,6 +54,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RCON_PASS=""
 
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends ca-certificates curl jq tar xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
