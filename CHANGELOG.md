@@ -3,13 +3,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.17.6] - 2026-09-03
 
-### Security
+### Changed
 - Added weekly Dependabot coverage for npm, Go modules, GitHub Actions and Docker definitions, with non-major updates grouped by ecosystem and major platform migrations left for deliberate review.
 - Updated the build toolchain to Go 1.26.8, `golang.org/x/crypto` to 0.56.0 and the transitive npm build dependency `fast-uri` to 3.1.7.
 - Updated safe non-major npm dependencies and `testify`, and corrected the legacy INI module path so automated Go dependency updates can run reliably.
 - Refreshed immutable Node and Go builder images and upgraded Ubuntu runtime packages during image builds so published containers receive available distribution security fixes.
+
+### Security
 - Restricted Factorio release downloads and redirects to official HTTPS endpoints, bounded release and legacy-modpack archive reads, and made untrusted file-name normalization explicit at filesystem boundaries.
 - Added standard-library local-path guards at save, profile and mod filesystem boundaries.
 - Reduced the test workflow token to read-only repository contents.
