@@ -82,6 +82,9 @@ updates:
       - dependency-name: golang
         update-types:
           - version-update:semver-minor
+      - dependency-name: ubuntu
+        update-types:
+          - version-update:semver-minor
     groups:
       docker-non-major:
         patterns:
