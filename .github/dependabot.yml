@@ -1,0 +1,74 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    groups:
+      npm-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: gomod
+    directory: /src
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:10"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    groups:
+      go-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:20"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    groups:
+      actions-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:30"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    groups:
+      docker-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: deps

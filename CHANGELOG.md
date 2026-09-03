@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Security
+- Added weekly Dependabot coverage for npm, Go modules, GitHub Actions and Docker definitions, with non-major updates grouped by ecosystem.
+- Updated the build toolchain to Go 1.26.8, `golang.org/x/crypto` to 0.56.0 and the transitive npm build dependency `fast-uri` to 3.1.7.
+- Refreshed immutable Node and Go builder images and upgraded Ubuntu runtime packages during image builds so published containers receive available distribution security fixes.
+
 ## [0.17.5] - 2026-08-27
 
 ### Fixed
