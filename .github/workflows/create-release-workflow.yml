@@ -238,7 +238,7 @@ jobs:
       - name: Test backend and Unraid metadata
         run: |
           cd src
-          go version | grep -F 'go1.25.14 '
+          go version | grep -F 'go1.26.8 '
           go test ./... -short -count=1
           go vet ./...
           go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...

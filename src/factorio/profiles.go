@@ -373,6 +373,7 @@ func normalizeProfileStartupSave(directory, requested string) (string, error) {
 	if err := ValidatePathElement(requested); err != nil {
 		return "", fmt.Errorf("%w: selected save does not exist", ErrInvalidProfile)
 	}
+	requested = filepath.Base(requested)
 	info, err := os.Stat(filepath.Join(directory, requested))
 	if err != nil || !isUsableSave(info) {
 		return "", fmt.Errorf("%w: selected save does not exist", ErrInvalidProfile)

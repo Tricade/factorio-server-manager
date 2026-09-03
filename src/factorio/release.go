@@ -25,6 +25,10 @@ type ReleaseChannel string
 const (
 	ReleaseChannelStable ReleaseChannel = "stable"
 	ReleaseChannelLatest ReleaseChannel = "latest"
+
+	maximumFactorioReleaseArchiveBytes int64 = 2 * 1024 * 1024 * 1024
+	officialFactorioDownloadHost             = "www.factorio.com"
+	officialFactorioCDNHost                  = "dl.factorio.com"
 )
 
 var releaseDownloadURLs = map[ReleaseChannel]string{
@@ -98,18 +102,62 @@ func NormalizeReleaseTarget(target string) (string, error) {
 // ReleaseDownloadURL returns an official Factorio download URL for a supported
 // rolling channel or an exact, strictly validated version.
 func ReleaseDownloadURL(target string) (string, error) {
-	normalized, err := NormalizeReleaseTarget(target)
+	downloadURL, err := officialReleaseDownloadURL(target)
 	if err != nil {
 		return "", err
 	}
-	if downloadURL, ok := releaseDownloadURLs[ReleaseChannel(normalized)]; ok {
-		return downloadURL, nil
-	}
-	downloadURL, err := url.JoinPath("https://www.factorio.com/get-download", normalized, "headless/linux64")
+	return downloadURL.String(), nil
+}
+
+// officialReleaseDownloadURL keeps the request authority independent of the
+// selected release. The validated target can affect only one URL path segment.
+func officialReleaseDownloadURL(target string) (*url.URL, error) {
+	normalized, err := NormalizeReleaseTarget(target)
 	if err != nil {
-		return "", fmt.Errorf("build Factorio release URL: %w", err)
+		return nil, err
+	}
+	downloadURL := &url.URL{
+		Scheme: "https",
+		Host:   officialFactorioDownloadHost,
+		Path:   "/get-download/" + normalized + "/headless/linux64",
+	}
+	if err := validateOfficialFactorioDownloadURL(downloadURL); err != nil {
+		return nil, err
 	}
 	return downloadURL, nil
+}
+
+func validateOfficialFactorioDownloadURL(downloadURL *url.URL) error {
+	if downloadURL == nil || !strings.EqualFold(downloadURL.Scheme, "https") || downloadURL.User != nil || downloadURL.Port() != "" {
+		return errors.New("Factorio release download must use HTTPS without credentials or a custom port")
+	}
+	host := strings.ToLower(downloadURL.Hostname())
+	path := downloadURL.EscapedPath()
+	switch host {
+	case officialFactorioDownloadHost, "factorio.com":
+		if !strings.HasPrefix(path, "/get-download/") {
+			return errors.New("Factorio release download URL has an unexpected path")
+		}
+	case officialFactorioCDNHost:
+		if !strings.HasPrefix(path, "/releases/") {
+			return errors.New("Factorio release CDN URL has an unexpected path")
+		}
+	default:
+		return fmt.Errorf("Factorio release download redirected to untrusted host %q", host)
+	}
+	return nil
+}
+
+func newFactorioReleaseHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 5 * time.Minute,
+		CheckRedirect: func(request *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("too many Factorio release download redirects")
+			}
+			return validateOfficialFactorioDownloadURL(request.URL)
+		},
+	}
 }
 
 func parseOfficialRelease(raw json.RawMessage) (string, error) {
@@ -304,7 +352,7 @@ func installRelease(downloadTarget, persistedTarget string, requiredBuiltIns []s
 	if err != nil {
 		return err
 	}
-	downloadURL, err := ReleaseDownloadURL(normalizedTarget)
+	downloadURL, err := officialReleaseDownloadURL(normalizedTarget)
 	if err != nil {
 		return err
 	}
@@ -316,8 +364,8 @@ func installRelease(downloadTarget, persistedTarget string, requiredBuiltIns []s
 	archivePath := archive.Name()
 	defer os.Remove(archivePath)
 
-	client := &http.Client{Timeout: 5 * time.Minute}
-	response, err := client.Get(downloadURL)
+	request := &http.Request{Method: http.MethodGet, URL: downloadURL, Header: make(http.Header)}
+	response, err := newFactorioReleaseHTTPClient().Do(request)
 	if err != nil {
 		archive.Close()
 		return fmt.Errorf("download Factorio %s release: %w", normalizedTarget, err)
@@ -327,7 +375,11 @@ func installRelease(downloadTarget, persistedTarget string, requiredBuiltIns []s
 		archive.Close()
 		return fmt.Errorf("download Factorio %s release: unexpected status %s", normalizedTarget, response.Status)
 	}
-	if _, err := io.Copy(archive, response.Body); err != nil {
+	if response.ContentLength > maximumFactorioReleaseArchiveBytes {
+		archive.Close()
+		return fmt.Errorf("download Factorio %s release: archive exceeds %d bytes", normalizedTarget, maximumFactorioReleaseArchiveBytes)
+	}
+	if err := copyWithHardLimit(archive, response.Body, maximumFactorioReleaseArchiveBytes); err != nil {
 		archive.Close()
 		return fmt.Errorf("save Factorio %s release: %w", normalizedTarget, err)
 	}

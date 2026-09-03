@@ -106,6 +106,15 @@ func (mods *Mods) createMod(modName string, fileName string, fileRc io.Reader) e
 }
 
 func (mods *Mods) createModWithLimit(modName string, fileName string, fileRc io.Reader, maximumBytes int64) error {
+	if err := ValidatePathElement(modName); err != nil {
+		return fmt.Errorf("invalid mod name: %w", err)
+	}
+	if err := ValidatePathElement(fileName); err != nil {
+		return fmt.Errorf("invalid mod filename: %w", err)
+	}
+	modName = filepath.Base(modName)
+	fileName = filepath.Base(fileName)
+
 	existingFiles := make([]string, 0)
 	for _, mod := range mods.ModInfoList.Mods {
 		if mod.Name == modName {
@@ -157,6 +166,8 @@ func (mods *Mods) DownloadMod(downloadPath string, filename string, modId string
 	if err := ValidatePathElement(modId); err != nil {
 		return fmt.Errorf("invalid mod name: %w", err)
 	}
+	filename = filepath.Base(filename)
+	modId = filepath.Base(modId)
 
 	var credentials Credentials
 	status, err := credentials.Load()

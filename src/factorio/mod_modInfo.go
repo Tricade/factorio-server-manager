@@ -219,6 +219,8 @@ func (modInfoList *ModInfoList) createModWithLimit(modName string, fileName stri
 	if !strings.EqualFold(filepath.Ext(fileName), ".zip") {
 		return errors.New("mod filename must end in .zip")
 	}
+	modName = filepath.Base(modName)
+	fileName = filepath.Base(fileName)
 
 	filePath := filepath.Join(modInfoList.Destination, fileName)
 	newFile, err := os.CreateTemp(modInfoList.Destination, ".mod-upload-*")

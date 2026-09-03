@@ -12,6 +12,10 @@ on:
   pull_request:
     branches:
       - '**'
+
+permissions:
+  contents: read
+
 jobs:
   test-npm:
     strategy:
@@ -43,7 +47,7 @@ jobs:
       - if: contains(matrix.os, 'ubuntu')
         working-directory: src
         run: |
-          go version | grep -F 'go1.25.14 '
+          go version | grep -F 'go1.26.8 '
           go test ./... -short -count=1
           go vet ./...
           go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
@@ -70,7 +74,7 @@ jobs:
             --env FSM_TEST_MOUNTED_FACTORIO_DIR=/opt/factorio \
             --env FSM_TEST_MOUNTED_MODS_DIR=/opt/factorio/mods \
             --workdir /workspace \
-            golang:1.25.14-bookworm@sha256:3b4a11519ad929d1e1d261a12cff056f0c85b735253d7d861346b9c6f8b36437 \
+            golang:1.26.8-bookworm@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 \
             go test ./factorio -run '^(TestDeleteAllModsAtMountedDestination|TestReplaceModsFromSaveAtMountedDestination|TestReplaceReleaseFilesAtMountedDestination)$' -count=1 -v
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
       - name: Build production container

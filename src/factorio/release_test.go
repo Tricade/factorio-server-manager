@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -67,6 +68,31 @@ func TestReleaseDownloadURL(t *testing.T) {
 func TestReleaseDownloadURLRejectsUnsupportedChannel(t *testing.T) {
 	_, err := ReleaseDownloadURL("https://example.invalid/factorio.tar.xz")
 	assert.Error(t, err)
+}
+
+func TestValidateOfficialFactorioDownloadURLAllowsOnlyOfficialHTTPSPaths(t *testing.T) {
+	for _, raw := range []string{
+		"https://www.factorio.com/get-download/latest/headless/linux64",
+		"https://factorio.com/get-download/2.0.77/headless/linux64",
+		"https://dl.factorio.com/releases/2.0.77/factorio-headless_linux_2.0.77.tar.xz?secure=token",
+	} {
+		parsed, err := url.Parse(raw)
+		require.NoError(t, err)
+		assert.NoError(t, validateOfficialFactorioDownloadURL(parsed), raw)
+	}
+
+	for _, raw := range []string{
+		"http://www.factorio.com/get-download/latest/headless/linux64",
+		"https://www.factorio.com.example/get-download/latest/headless/linux64",
+		"https://www.factorio.com/redirect?target=http://127.0.0.1",
+		"https://dl.factorio.com/private/file",
+		"https://user@www.factorio.com/get-download/latest/headless/linux64",
+		"https://www.factorio.com:8443/get-download/latest/headless/linux64",
+	} {
+		parsed, err := url.Parse(raw)
+		require.NoError(t, err)
+		assert.Error(t, validateOfficialFactorioDownloadURL(parsed), raw)
+	}
 }
 
 func TestRuntimeStateRoundTripPreservesExactInstalledVersion(t *testing.T) {
