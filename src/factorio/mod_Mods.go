@@ -106,6 +106,12 @@ func (mods *Mods) createMod(modName string, fileName string, fileRc io.Reader) e
 }
 
 func (mods *Mods) createModWithLimit(modName string, fileName string, fileRc io.Reader, maximumBytes int64) error {
+	if !filepath.IsLocal(modName) {
+		return errors.New("invalid mod name")
+	}
+	if !filepath.IsLocal(fileName) {
+		return errors.New("invalid mod filename")
+	}
 	if err := ValidatePathElement(modName); err != nil {
 		return fmt.Errorf("invalid mod name: %w", err)
 	}
@@ -160,6 +166,12 @@ func (mods *Mods) createModWithLimit(modName string, fileName string, fileRc io.
 }
 
 func (mods *Mods) DownloadMod(downloadPath string, filename string, modId string) error {
+	if !filepath.IsLocal(filename) {
+		return errors.New("invalid mod filename")
+	}
+	if !filepath.IsLocal(modId) {
+		return errors.New("invalid mod name")
+	}
 	if err := ValidatePathElement(filename); err != nil {
 		return fmt.Errorf("invalid mod filename: %w", err)
 	}

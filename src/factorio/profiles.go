@@ -370,6 +370,9 @@ func normalizeProfileStartupSave(directory, requested string) (string, error) {
 	if requested == "" {
 		return "", fmt.Errorf("%w: select a save", ErrInvalidProfile)
 	}
+	if !filepath.IsLocal(requested) {
+		return "", fmt.Errorf("%w: selected save does not exist", ErrInvalidProfile)
+	}
 	if err := ValidatePathElement(requested); err != nil {
 		return "", fmt.Errorf("%w: selected save does not exist", ErrInvalidProfile)
 	}

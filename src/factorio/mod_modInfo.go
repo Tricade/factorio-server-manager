@@ -210,6 +210,12 @@ func (modInfoList *ModInfoList) createMod(modName string, fileName string, modFi
 }
 
 func (modInfoList *ModInfoList) createModWithLimit(modName string, fileName string, modFile io.Reader, maximumBytes int64) error {
+	if !filepath.IsLocal(modName) {
+		return errors.New("invalid mod name")
+	}
+	if !filepath.IsLocal(fileName) {
+		return errors.New("invalid mod filename")
+	}
 	if err := ValidatePathElement(modName); err != nil {
 		return errors.New("invalid mod name: " + err.Error())
 	}
