@@ -9,6 +9,10 @@ updates:
       time: "04:00"
       timezone: Europe/Berlin
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       npm-non-major:
         patterns:
@@ -27,6 +31,10 @@ updates:
       time: "04:10"
       timezone: Europe/Berlin
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       go-non-major:
         patterns:
@@ -45,6 +53,10 @@ updates:
       time: "04:20"
       timezone: Europe/Berlin
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       actions-non-major:
         patterns:
@@ -63,6 +75,13 @@ updates:
       time: "04:30"
       timezone: Europe/Berlin
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: golang
+        update-types:
+          - version-update:semver-minor
     groups:
       docker-non-major:
         patterns:
