@@ -355,6 +355,7 @@ func normalizeWorldGenerationRequestWithOptions(request WorldGenerationRequest, 
 		if err := ValidatePathElement(request.Name); err != nil || !strings.EqualFold(filepath.Ext(request.Name), ".zip") {
 			return request, options, errors.New("save name must be a valid .zip filename")
 		}
+		request.Name = filepath.Base(request.Name)
 	}
 
 	definitions := make(map[string]WorldControlDefinition, len(options.Controls))

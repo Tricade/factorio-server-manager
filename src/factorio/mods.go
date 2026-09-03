@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -137,7 +136,7 @@ func ModStartUp() {
 			}
 			newJson, _ := json.Marshal(modSimpleList)
 
-			err = ioutil.WriteFile(filepath.Join(modSimpleList.Destination, "mod-list.json"), newJson, 0664)
+			err = os.WriteFile(filepath.Join(modSimpleList.Destination, "mod-list.json"), newJson, 0664)
 			if err != nil {
 				log.Printf("error when writing new mod-list: %s", err)
 				return err
@@ -156,27 +155,36 @@ func ModStartUp() {
 			}
 
 			for _, modFile := range modPackFile.File {
+				if modFile.FileInfo().IsDir() {
+					continue
+				}
+				if err := ValidatePathElement(modFile.Name); err != nil || filepath.Base(modFile.Name) != modFile.Name || !strings.EqualFold(filepath.Ext(modFile.Name), ".zip") {
+					return fmt.Errorf("legacy mod pack contains invalid entry %q", modFile.Name)
+				}
+				modFileName := filepath.Base(modFile.Name)
+				if modFile.UncompressedSize64 > uint64(maximumModPortalArchiveBytes) {
+					return fmt.Errorf("legacy mod pack entry %q exceeds %d bytes", modFileName, maximumModPortalArchiveBytes)
+				}
 				modFileRc, err := modFile.Open()
 				if err != nil {
 					log.Printf("error opening mod_file: %s", err)
 					return err
 				}
-				defer modFileRc.Close()
 
-				modFileBuffer, err := ioutil.ReadAll(modFileRc)
-				if err != nil {
-					log.Printf("error reading mod_file_rc: %s", err)
-					return err
+				var modFileBuffer bytes.Buffer
+				readErr := copyWithHardLimit(&modFileBuffer, modFileRc, maximumModPortalArchiveBytes)
+				closeErr := modFileRc.Close()
+				if readErr != nil {
+					log.Printf("error reading mod_file_rc: %s", readErr)
+					return readErr
+				}
+				if closeErr != nil {
+					log.Printf("error closing mod_file_rc: %s", closeErr)
+					return closeErr
 				}
 
-				err = modFileRc.Close()
-				if err != nil {
-					log.Printf("error closing mod_file_rc: %s", err)
-					return err
-				}
-
-				modFileByteReader := bytes.NewReader(modFileBuffer)
-				modFileZipReader, err := zip.NewReader(modFileByteReader, int64(len(modFileBuffer)))
+				modFileByteReader := bytes.NewReader(modFileBuffer.Bytes())
+				modFileZipReader, err := zip.NewReader(modFileByteReader, int64(modFileBuffer.Len()))
 				if err != nil {
 					log.Printf("error creating Reader on byte_array: %s", err)
 					return err
@@ -189,7 +197,7 @@ func ModStartUp() {
 					return err
 				}
 
-				err = mods.createMod(modInfo.Name, modFile.Name, bytes.NewReader(modFileBuffer))
+				err = mods.createModWithLimit(modInfo.Name, modFileName, bytes.NewReader(modFileBuffer.Bytes()), maximumModPortalArchiveBytes)
 				if err != nil {
 					log.Printf("error on creating mod: %s", err)
 					return err

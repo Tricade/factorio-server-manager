@@ -496,6 +496,10 @@ func (planner *modDependencyPlanner) getDetails(name string) (ModPortalStruct, e
 }
 
 func (planner *modDependencyPlanner) readBuiltInMod(name string) (builtInModInfo, bool, error) {
+	if err := ValidatePathElement(name); err != nil {
+		return builtInModInfo{}, false, fmt.Errorf("invalid built-in mod name %q: %w", name, err)
+	}
+	name = filepath.Base(name)
 	path := filepath.Join(bootstrap.GetConfig().FactorioDir, "data", name, "info.json")
 	contents, err := os.ReadFile(path)
 	if os.IsNotExist(err) {

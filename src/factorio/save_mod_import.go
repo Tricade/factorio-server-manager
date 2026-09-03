@@ -51,9 +51,11 @@ func ImportModsFromSave(saveName string) (SaveModImportResult, error) {
 	}
 
 	config := bootstrap.GetConfig()
-	if _, err := FindSave(saveName); err != nil {
+	save, err := FindSave(saveName)
+	if err != nil {
 		return SaveModImportResult{}, err
 	}
+	saveName = filepath.Base(save.Name)
 	savePath := filepath.Join(config.FactorioSavesDir, saveName)
 	var credentials Credentials
 	authenticated, err := credentials.Load()
