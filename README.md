@@ -76,43 +76,25 @@ The implementation details and deliberate boundaries are documented in [TECHNICA
 
 ## Screenshots
 
-The proposed visual refresh is documented in [the redesign draft](docs/UI-REDESIGN-DRAFT.md), with desktop and mobile previews. The screenshots below show the released interface for comparison.
+These screenshots show the current industrial redesign draft with synthetic preview data. See [the design notes](docs/UI-REDESIGN-DRAFT.md) for its layout changes and review scope.
 
 ### Operational overview
 
-![Factorio Server Control operational overview](screenshots/Screenshot_Controls.png)
+![Industrial factory overview draft](screenshots/Redesign_Overview.png)
 
-### Factory map and platform detail
+### Mobile overview
 
-![Factorio Server Control fullscreen factory-map viewer](screenshots/Screenshot_Map_Lightbox.png)
+![Mobile overview draft](screenshots/Redesign_Mobile.png)
 
-### Resource-aware map generation
+### Installed mods
 
-![Factorio Server Control factory-map generation settings](screenshots/Screenshot_Map_Settings.png)
+![Mod management draft](screenshots/Redesign_Mods.png)
 
 ### Independent profiles
 
-![Factorio Server Control profile library](screenshots/Screenshot_Profiles.png)
+![Profile library draft](screenshots/Redesign_Profiles.png)
 
-### New world
-
-![Factorio Server Control new-world preview](screenshots/Screenshot_New_World.png)
-
-### Saves and fixed checkpoints
-
-![Factorio Server Control saves and checkpoints](screenshots/Screenshot_Saves.png)
-
-### Compatible mods and dependencies
-
-![Factorio Server Control mod management](screenshots/Screenshot_Mods.png)
-
-### Profile-scoped mod startup settings
-
-![Factorio Server Control mod startup settings](screenshots/Screenshot_Mod_Startup_Settings.png)
-
-### Factorio version and Space Age mode
-
-![Factorio Server Control version and mode selection](screenshots/Screenshot_Version_Mode.png)
+For comparison, the [0.18.0 README](https://github.com/Tricade/factorio-server-manager/blob/460fa3e/README.md#screenshots) contains screenshots of the previous interface and its additional views.
 
 ## Runtime model
 

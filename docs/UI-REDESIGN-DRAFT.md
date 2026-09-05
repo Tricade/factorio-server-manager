@@ -35,7 +35,7 @@ These previews use synthetic local fixture data, not a connected Factorio server
 
 The existing shared API client, profile context, routes and administrator/viewer boundary remain in use. Process lifecycle, profile switching, persistence, map generation and backend APIs retain their existing behavior. No production dependencies, external fonts, telemetry, deployment options or data migrations are introduced.
 
-Review the map prominence, industrial styling and everyday navigation before promoting the draft. Screenshots in the main README remain the released UI for comparison.
+Review the map prominence, industrial styling and everyday navigation before promoting the draft. The README shows the same current previews and links to the 0.18.0 screenshots for comparison.
 
 ## Browser regression check
 
