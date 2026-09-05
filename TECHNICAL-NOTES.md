@@ -29,6 +29,7 @@
 - New snapshots may persist bounded player-force entity footprints beside each surface image for a lazy browser Canvas overlay; older image-only snapshots remain valid.
 - Mod Portal search, releases and dependency resolution are restricted to the active Factorio major/minor line.
 - Required dependencies are selected automatically; optional and recommended dependencies remain explicit choices.
+- Visible mod startup settings are evaluated by the active profile's exact local Factorio engine and can be edited only by an administrator while the game process is fully stopped.
 - Save-mod import asks Factorio itself for the save's current mod state in an isolated workspace instead of trusting creation-time `level-init.dat` metadata; downloads and activation remain staged and rollback-safe.
 - UI version and source revision are visible in the navigation footer; the HTML entry point is cache-revalidated and uses versioned asset URLs.
 - Uploads, archive paths, credentials and logs have bounded or redacted handling appropriate for an authenticated internal administration interface.
@@ -63,6 +64,23 @@ This is intentionally a periodic static view rather than a live remote-map proto
 Factorio creates `level-init.dat` with a world and does not keep that creation-time header synchronized with later game-version or mod changes. Save-mod import therefore validates and copies the selected archive into an ephemeral workspace, gives the installed Factorio executable an empty temporary mod directory plus private `write-data`, and runs the official `--sync-mods` inspection there. Headless synchronization requires Mod Portal authentication when community archives are missing, so the workspace receives a minimal `player-data.json` containing the stored service username and user key. The account password is never retained or passed to Factorio, credentials never enter process arguments, and the complete private workspace is removed after inspection. The playable save, active mods and profile configuration are never passed into that workspace.
 
 The manager validates the bounded generated `mod-list.json`, distinguishes enabled built-in features from save-required community mods whose archives are not present in the empty workspace, and only then enters the existing staged download and activation transaction. Factorio performs detection; the manager retains authenticated Mod Portal downloads, exact-version validation and rollback. A permanently unavailable exact release or an authenticated archive whose `info.json` identifies a different mod is omitted from the staged set and returned to the interface as a structured skip reason. Authentication, rate-limit, network, server, malformed-archive, validation and activation failures still abort the transaction and leave the previous mod directory and game mode unchanged.
+
+Save import changes the selected mod set but preserves the active profile's existing `mod-settings.dat` byte for byte. Settings for newly imported mods remain absent and therefore resolve to the mod's Factorio default; settings for removed or temporarily unavailable mods remain as unknown entries so a later reinstall does not silently lose them.
+
+### Mod startup settings
+
+The editor treats Factorio's binary `mod-settings.dat` as the only source of truth. A bounded PropertyTree codec reads and rewrites supported node types while preserving unknown startup entries and the complete `runtime-global` and `runtime-per-user` branches. A missing file begins with an empty document for the active exact game version; malformed or unsupported files fail only the settings panel and do not block ordinary mod management.
+
+Schema evaluation uses a disposable workspace:
+
+- only the enabled active-profile mod packages, `mod-list.json` and candidate `mod-settings.dat` are copied or hard-linked into the workspace;
+- an embedded manager-only exporter is added to that temporary mod list and the installed Factorio binary evaluates the complete settings stage, including dependency updates and final fixes;
+- localized names and descriptions plus type, owner, default, current value, ordering and constraints are returned through bounded files under temporary `script-output`;
+- neither the exporter nor any generated save or output is copied into the playable profile, and the workspace is removed after the operation.
+
+GET and PATCH endpoints are administrator-only and `no-store`. The operation holds the profile, lifecycle, world-generation, map-snapshot and program-file guards so a profile switch, server start or binary replacement cannot race the engine check. A revision covers the profile identity, exact version, mod list, enabled mod contents and current settings; a changed revision rejects a stale form. Every requested value is type- and constraint-checked, the full candidate is evaluated again by Factorio, and only a matching result is committed through sibling-file atomic replacement with Windows rollback behavior. Child-process errors and setting values are never written to responses or manager logs.
+
+Profiles copy the complete mods directory, so startup settings remain independent through clone, snapshot, activation and container recreation. Mod-pack creation intentionally snapshots `mod-settings.dat`, and loading a pack activates those stored values with the pack. Save-mod import follows the separate preservation rule above.
 
 ## Server profiles
 

@@ -33,6 +33,16 @@ const mods = {
         return response.data;
     },
     downloadAllURL: '/api/mods/download',
+    startupSettings: {
+        get: async () => {
+            const response = await client.get('/api/mods/startup-settings');
+            return response.data;
+        },
+        update: async (revision, changes) => {
+            const response = await client.patch('/api/mods/startup-settings', {revision, changes});
+            return response.data;
+        }
+    },
     portal: {
         login: async (username, password) => {
             const response = await client.post('/api/mods/portal/login', {

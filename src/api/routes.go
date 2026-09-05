@@ -43,7 +43,8 @@ func ProfileDataMiddleware(next http.Handler) http.Handler {
 		// launched. Taking it here as well could deadlock behind a queued writer.
 		modPackLoadOwnsLock := strings.HasPrefix(path, "/api/mods/packs/") && strings.HasSuffix(path, "/load")
 		saveModImportOwnsLock := path == "/api/saves/mods/import"
-		if strings.HasPrefix(path, "/api/profiles") || path == "/api/server/start" || modPackLoadOwnsLock || saveModImportOwnsLock {
+		modStartupSettingsOwnsLock := path == "/api/mods/startup-settings"
+		if strings.HasPrefix(path, "/api/profiles") || path == "/api/server/start" || modPackLoadOwnsLock || saveModImportOwnsLock || modStartupSettingsOwnsLock {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -229,7 +230,7 @@ var nonAdminMutationRoutes = map[string]bool{
 // are self-service session/password actions. User enumeration is also
 // administrator-only even though it is read-only.
 func routeRequiresAdministrator(route Route) bool {
-	if route.Name == "ListUsers" {
+	if route.Name == "ListUsers" || route.Name == "GetModStartupSettings" {
 		return true
 	}
 	method := strings.ToUpper(route.Method)
@@ -637,6 +638,18 @@ var apiRoutes = Routes{
 		"/mods/download",
 		ModDownloadHandler,
 		false,
+	}, {
+		"GetModStartupSettings",
+		"GET",
+		"/mods/startup-settings",
+		GetModStartupSettingsHandler,
+		true,
+	}, {
+		"UpdateModStartupSettings",
+		"PATCH",
+		"/mods/startup-settings",
+		UpdateModStartupSettingsHandler,
+		true,
 	},
 	// Mod Packs
 	{

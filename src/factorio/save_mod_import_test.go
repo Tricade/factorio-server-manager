@@ -270,6 +270,10 @@ func TestReplaceModsFromBaseSaveExplicitlyDisablesSpaceAgeFeatures(t *testing.T)
 	if err := os.WriteFile(filepath.Join(activeMods, "mod-list.json"), []byte(`{"mods":[{"name":"base","enabled":true},{"name":"elevated-rails","enabled":true},{"name":"quality","enabled":true},{"name":"space-age","enabled":true}]}`), 0644); err != nil {
 		t.Fatal(err)
 	}
+	settingsContents := []byte("profile-scoped mod settings remain byte-for-byte unchanged")
+	if err := os.WriteFile(filepath.Join(activeMods, "mod-settings.dat"), settingsContents, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := replaceModsFromSave(factorioDirectory, activeMods, []Mod{
 		{Name: "base", Version: Version{2, 0, 72, 0}},
@@ -287,6 +291,10 @@ func TestReplaceModsFromBaseSaveExplicitlyDisablesSpaceAgeFeatures(t *testing.T)
 		if list.IsEnabled(name) {
 			t.Errorf("Space Age feature %s remained enabled", name)
 		}
+	}
+	preservedSettings, err := os.ReadFile(filepath.Join(activeMods, "mod-settings.dat"))
+	if err != nil || !bytes.Equal(preservedSettings, settingsContents) {
+		t.Fatalf("save mod import did not preserve profile settings: contents=%q error=%v", preservedSettings, err)
 	}
 	assertNoSaveImportTransactionEntries(t, activeMods)
 }

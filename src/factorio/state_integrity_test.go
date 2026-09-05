@@ -107,6 +107,55 @@ func TestModPackActivationFailureRestoresActiveMods(t *testing.T) {
 	}
 }
 
+func TestModPackCreationAndLoadingCarryProfileModSettings(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source-mods")
+	pack := filepath.Join(root, "pack")
+	destination := filepath.Join(root, "active-mods")
+	for _, directory := range []string{source, destination} {
+		if err := os.MkdirAll(directory, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, directory := range []string{source, destination} {
+		if err := os.WriteFile(filepath.Join(directory, "mod-list.json"), []byte(`{"mods":[{"name":"base","enabled":true}]}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	packSettings := []byte("settings stored with the mod pack")
+	if err := os.WriteFile(filepath.Join(source, "mod-settings.dat"), packSettings, 0644); err != nil {
+		t.Fatal(err)
+	}
+	// CreateModPack uses the same complete-directory copy so each reusable pack
+	// keeps the setting values that belong to its saved mod combination.
+	if err := copyProfileDirectory(source, pack); err != nil {
+		t.Fatal(err)
+	}
+	createdSettings, err := os.ReadFile(filepath.Join(pack, "mod-settings.dat"))
+	if err != nil || string(createdSettings) != string(packSettings) {
+		t.Fatalf("mod pack creation did not copy settings: contents=%q error=%v", createdSettings, err)
+	}
+	if err := os.WriteFile(filepath.Join(destination, "mod-settings.dat"), []byte("old active settings"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	swap, err := prepareModPackDirectorySwap(pack, destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer swap.cleanup()
+	if err := swap.activate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := swap.commit(); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(filepath.Join(destination, "mod-settings.dat"))
+	if err != nil || string(contents) != string(packSettings) {
+		t.Fatalf("mod pack settings were not activated: contents=%q error=%v", contents, err)
+	}
+}
+
 func TestDeleteAllModsActivationFailureRestoresActiveDirectory(t *testing.T) {
 	root := t.TempDir()
 	activeMods := filepath.Join(root, "mods")
@@ -168,6 +217,41 @@ func TestDeleteAllModsAtMountedDestination(t *testing.T) {
 	for _, entry := range entries {
 		if strings.HasPrefix(entry.Name(), ".mods-empty-") {
 			t.Fatalf("temporary mods directory was left behind: %s", entry.Name())
+		}
+	}
+}
+
+// This test is enabled by the Docker integration command. It verifies the
+// exact file mutation used by the startup-settings editor inside the split
+// /opt/factorio/mods mount.
+func TestModStartupSettingsAtomicWriteAtMountedDestination(t *testing.T) {
+	activeMods := os.Getenv("FSM_TEST_MOUNTED_MODS_DIR")
+	if activeMods == "" {
+		t.Skip("set FSM_TEST_MOUNTED_MODS_DIR to a dedicated mount point")
+	}
+	path := filepath.Join(activeMods, "mod-settings.dat")
+	if err := os.WriteFile(path, []byte("previous settings"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileAtomically(path, []byte("validated replacement settings"), 0600); err != nil {
+		t.Fatalf("atomically replace mounted mod settings: %v", err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil || string(contents) != "validated replacement settings" {
+		t.Fatalf("mounted mod settings were not committed: contents=%q error=%v", contents, err)
+	}
+	if info, err := os.Stat(path); err != nil {
+		t.Fatalf("inspect mounted mod settings permissions: %v", err)
+	} else if info.Mode().Perm() != 0600 {
+		t.Fatalf("mounted mod settings permissions are %o, want 600", info.Mode().Perm())
+	}
+	entries, err := os.ReadDir(activeMods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".fsm-write-") || strings.HasPrefix(entry.Name(), ".fsm-backup-") {
+			t.Fatalf("startup-settings transaction file was left behind: %s", entry.Name())
 		}
 	}
 }

@@ -34,6 +34,7 @@ func setupProfileTest(t *testing.T) *profileTestEnvironment {
 	require.NoError(t, os.WriteFile(filepath.Join(active["saves"], "current.zip"), []byte("current save"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(active["mods"], "current_1.0.0.zip"), []byte("current mod"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(active["mods"], "mod-list.json"), []byte(`{"mods":[{"name":"base","enabled":true}]}`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(active["mods"], "mod-settings.dat"), []byte("current profile mod settings"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(active["config"], "server-settings.json"), []byte(`{"name":"current"}`), 0644))
 
 	environment := &profileTestEnvironment{
@@ -143,6 +144,7 @@ func TestInitializeProfilesMigratesCurrentSetupIdempotently(t *testing.T) {
 	assert.Equal(t, 1, profile.ModCount)
 	assertFileContents(t, filepath.Join(environment.root, "profiles", profile.ID, "saves", "current.zip"), "current save")
 	assertFileContents(t, filepath.Join(environment.root, "profiles", profile.ID, "mods", "current_1.0.0.zip"), "current mod")
+	assertFileContents(t, filepath.Join(environment.root, "profiles", profile.ID, "mods", "mod-settings.dat"), "current profile mod settings")
 }
 
 func TestListProfilesClearsSelectedSaveAfterLastSaveIsDeleted(t *testing.T) {
@@ -221,6 +223,7 @@ func TestCreateCloneAndEmptyProfiles(t *testing.T) {
 	assert.Equal(t, 1, clone.SaveCount)
 	assert.Equal(t, 1, clone.ModCount)
 	assertFileContents(t, filepath.Join(environment.root, "profiles", clone.ID, "saves", "current.zip"), "current save")
+	assertFileContents(t, filepath.Join(environment.root, "profiles", clone.ID, "mods", "mod-settings.dat"), "current profile mod settings")
 
 	state, err = CreateProfile("Vanilla", "Fresh base game", ProfileSourceEmpty)
 	require.NoError(t, err)
@@ -279,6 +282,7 @@ func TestActivateProfileSnapshotsCurrentDataAndDoesNotStartServer(t *testing.T) 
 
 	require.NoError(t, os.WriteFile(filepath.Join(environment.active["saves"], "current.zip"), []byte("current save after playing"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(environment.active["mods"], "new-mod_1.0.0.zip"), []byte("new active mod"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(environment.active["mods"], "mod-settings.dat"), []byte("current profile settings after playing"), 0644))
 
 	state, err = ActivateProfile(target.ID)
 	require.NoError(t, err)
@@ -289,12 +293,14 @@ func TestActivateProfileSnapshotsCurrentDataAndDoesNotStartServer(t *testing.T) 
 	assert.True(t, os.IsNotExist(err))
 	assertFileContents(t, filepath.Join(environment.root, "profiles", current.ID, "saves", "current.zip"), "current save after playing")
 	assertFileContents(t, filepath.Join(environment.root, "profiles", current.ID, "mods", "new-mod_1.0.0.zip"), "new active mod")
+	assertFileContents(t, filepath.Join(environment.root, "profiles", current.ID, "mods", "mod-settings.dat"), "current profile settings after playing")
 
 	state, err = ActivateProfile(current.ID)
 	require.NoError(t, err)
 	assert.Equal(t, current.ID, state.ActiveProfileID)
 	assertFileContents(t, filepath.Join(environment.active["saves"], "current.zip"), "current save after playing")
 	assertFileContents(t, filepath.Join(environment.active["mods"], "new-mod_1.0.0.zip"), "new active mod")
+	assertFileContents(t, filepath.Join(environment.active["mods"], "mod-settings.dat"), "current profile settings after playing")
 }
 
 func TestActivateProfileRestoresPreviousDataWhenActivationFails(t *testing.T) {

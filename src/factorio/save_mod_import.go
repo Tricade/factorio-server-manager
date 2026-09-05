@@ -85,6 +85,13 @@ func replaceModsFromSave(factorioDirectory, destination string, requested []Mod,
 	if installPortal == nil {
 		return SaveModImportResult{}, errors.New("save mod portal installer is not configured")
 	}
+	// Save import selects a mod set; it must not silently replace the active
+	// profile's independent startup/runtime setting values. Settings for newly
+	// imported mods remain absent and therefore use Factorio's defaults.
+	existingSettings, err := readBoundedRegularFile(filepath.Join(destination, "mod-settings.dat"), maximumModSettingsFileBytes, true)
+	if err != nil {
+		return SaveModImportResult{}, fmt.Errorf("preserve profile mod settings: %w", err)
+	}
 
 	swap, err := newDirectoryEntrySwap(destination, ".mods-save-import-staging-", ".mods-save-import-backup-")
 	if err != nil {
@@ -95,6 +102,11 @@ func replaceModsFromSave(factorioDirectory, destination string, requested []Mod,
 	staged, err := NewMods(swap.staging)
 	if err != nil {
 		return SaveModImportResult{}, fmt.Errorf("initialize staged save mod import: %w", err)
+	}
+	if len(existingSettings) > 0 {
+		if err := os.WriteFile(filepath.Join(swap.staging, "mod-settings.dat"), existingSettings, 0600); err != nil {
+			return SaveModImportResult{}, fmt.Errorf("stage profile mod settings: %w", err)
+		}
 	}
 	enabledSpaceAgeFeatures := make([]string, 0, len(spaceAgeFeatureMods))
 	skipped := make([]SaveModImportSkipped, 0)

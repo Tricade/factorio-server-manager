@@ -19,6 +19,7 @@ import LoadMods from "./components/LoadMods";
 import CreateModPack from "./components/CreateModPack";
 import ModPack from "./components/ModPack";
 import ModList from "./components/ModList";
+import ModStartupSettings from "./components/ModStartupSettings";
 import {useProfiles} from "../../context/ProfileContext";
 import ScopeBadge from "../../components/ScopeBadge";
 
@@ -33,6 +34,7 @@ const Mods = ({serverStatus, canManage = false}) => {
     const [loadError, setLoadError] = useState("");
     const [portalLoadError, setPortalLoadError] = useState("");
     const [reloadToken, setReloadToken] = useState(0);
+    const [startupSettingsRefreshKey, setStartupSettingsRefreshKey] = useState(0);
     const [isDeletingAllMods, setIsDeletingAllMods] = useState(false);
     const [isUpdatingAllMods, setIsUpdatingAllMods] = useState(false);
     const [isDeleteAllDialogOpen, setIsDeleteAllDialogOpen] = useState(false);
@@ -48,6 +50,7 @@ const Mods = ({serverStatus, canManage = false}) => {
         const result = await modsResource.installed();
         setUpdatableMods([]);
         setInstalledMods(result || []);
+        setStartupSettingsRefreshKey(token => token + 1);
         refreshProfiles().catch(() => undefined);
         return result;
     }, [refreshProfiles]);
@@ -195,9 +198,15 @@ const Mods = ({serverStatus, canManage = false}) => {
             </>}
         />
 
+        {canManage && !isLoading && !loadError && <ModStartupSettings
+            profileId={activeProfile?.id}
+            statusLocked={statusLocked}
+            refreshKey={startupSettingsRefreshKey}
+        />}
+
         <Panel
             title="Mod packs"
-            description="Manager-wide snapshots of mod combinations. Loading one replaces the installed mod set of the active profile only."
+            description="Manager-wide snapshots of mod combinations and their startup settings. Loading one replaces the installed mod set and stored mod settings of the active profile only."
             headerAction={<ScopeBadge scope="manager"/>}
             content={isLoading
                 ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faPuzzlePiece} spin/><p className="mt-3">Reading mod packs…</p></div></div>
