@@ -2649,6 +2649,177 @@ textarea.ui-input,
   color: var(--fsm-color-accent);
 }
 
+.ui-mod-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.ui-mod-settings__search {
+  position: relative;
+  display: block;
+  max-width: 28rem;
+}
+
+.ui-mod-settings__search > svg {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 0.8rem;
+  color: var(--fsm-color-text-muted);
+  font-size: 0.78rem;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.ui-mod-settings__search .ui-input {
+  padding-left: 2.2rem;
+}
+
+.ui-mod-settings-group {
+  overflow: hidden;
+  border: 1px solid var(--fsm-color-border-subtle);
+  border-radius: var(--fsm-radius-card);
+  background: var(--fsm-color-bg-sunken);
+}
+
+.ui-mod-settings-group > summary {
+  display: flex;
+  min-height: 3.6rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  color: var(--fsm-color-text);
+  cursor: pointer;
+  list-style: none;
+}
+
+.ui-mod-settings-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ui-mod-settings-group > summary:hover,
+.ui-mod-settings-group[open] > summary {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.ui-mod-settings-group > summary > span:first-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.ui-mod-settings-group > summary strong {
+  font-size: 0.84rem;
+}
+
+.ui-mod-settings-group > summary code,
+.ui-mod-setting code,
+.ui-mod-setting__color-row code {
+  overflow: hidden;
+  color: var(--fsm-color-text-muted);
+  font-family: var(--fsm-font-mono);
+  font-size: 0.64rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-mod-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  border-top: 1px solid var(--fsm-color-border-subtle);
+  padding: 0.85rem;
+}
+
+.ui-mod-setting {
+  min-width: 0;
+  border: 1px solid var(--fsm-color-border-subtle);
+  border-radius: var(--fsm-radius-control);
+  padding: 0.85rem;
+  background: var(--fsm-color-surface-raised);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.ui-mod-setting.is-dirty {
+  border-color: var(--fsm-color-accent-border);
+  box-shadow: inset 3px 0 0 var(--fsm-color-accent);
+}
+
+.ui-mod-setting__heading {
+  display: flex;
+  min-height: 2.8rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+  margin-bottom: 0.65rem;
+}
+
+.ui-mod-setting__heading > div {
+  min-width: 0;
+}
+
+.ui-mod-setting__heading .ui-label-row {
+  margin-bottom: 0.12rem;
+}
+
+.ui-mod-setting__reset {
+  min-height: 1.8rem;
+  flex: 0 0 auto;
+}
+
+.ui-mod-setting__checkbox {
+  min-height: 2.5rem;
+  align-items: center;
+  border: 1px solid var(--fsm-color-border);
+  border-radius: var(--fsm-radius-control);
+  padding: 0.55rem 0.7rem;
+  background: var(--fsm-color-bg-sunken);
+}
+
+.ui-mod-setting__color-row {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(7rem, 1fr) auto;
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.ui-mod-setting__color {
+  width: 3.25rem;
+  height: 2.5rem;
+  overflow: hidden;
+  border: 1px solid var(--fsm-color-border);
+  border-radius: var(--fsm-radius-control);
+  padding: 0.2rem;
+  background: var(--fsm-color-bg-sunken);
+  cursor: pointer;
+}
+
+.ui-mod-setting__alpha {
+  display: grid;
+  grid-template-columns: auto minmax(4.5rem, 7rem);
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--fsm-color-text-muted);
+  font-size: 0.65rem;
+}
+
+.ui-mod-setting__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.8rem;
+  margin-top: 0.55rem;
+  color: var(--fsm-color-text-muted);
+  font-size: 0.64rem;
+}
+
+.ui-mod-setting__meta strong {
+  color: var(--fsm-color-text-secondary);
+  font-weight: 600;
+}
+
 .ui-startup-setting h3 {
   color: var(--fsm-color-text);
   font-size: 0.84rem;
@@ -3221,6 +3392,10 @@ textarea.ui-input,
   .ui-player-overview__grid {
     grid-template-columns: 1fr;
   }
+
+  .ui-mod-settings-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 767px) {
@@ -3464,6 +3639,24 @@ textarea.ui-input,
 }
 
 @media (max-width: 430px) {
+  .ui-mod-setting__heading,
+  .ui-mod-setting__color-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .ui-mod-setting__heading {
+    flex-direction: column;
+  }
+
+  .ui-mod-setting__reset {
+    align-self: flex-start;
+  }
+
+  .ui-mod-setting__color {
+    width: 100%;
+  }
+
   .ui-mobile-brand-copy strong {
     font-size: 0.8rem;
   }
