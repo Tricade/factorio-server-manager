@@ -75,7 +75,7 @@ jobs:
             --env FSM_TEST_MOUNTED_MODS_DIR=/opt/factorio/mods \
             --workdir /workspace \
             golang:1.26.8-bookworm@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 \
-            go test ./factorio -run '^(TestDeleteAllModsAtMountedDestination|TestReplaceModsFromSaveAtMountedDestination|TestReplaceReleaseFilesAtMountedDestination)$' -count=1 -v
+            go test ./factorio -run '^(TestDeleteAllModsAtMountedDestination|TestReplaceModsFromSaveAtMountedDestination|TestReplaceReleaseFilesAtMountedDestination|TestModStartupSettingsAtomicWriteAtMountedDestination)$' -count=1 -v
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
       - name: Build production container
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7

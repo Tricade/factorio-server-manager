@@ -1,0 +1,6 @@
+{
+  "mods": [
+    {"name": "base", "enabled": true},
+    {"name": "fsm-mod-settings-fixture", "enabled": true}
+  ]
+}

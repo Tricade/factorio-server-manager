@@ -1,0 +1,8 @@
+{
+  "name": "fsm-mod-settings-exporter",
+  "version": "0.1.0",
+  "title": "FSM Mod Settings Exporter",
+  "author": "Tricade",
+  "factorio_version": "2.0",
+  "dependencies": ["base >= 2.0.0"]
+}

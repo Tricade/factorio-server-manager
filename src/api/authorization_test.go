@@ -75,6 +75,11 @@ func TestNewRouterReturnsMethodNotAllowedForFormerMutatingGETs(t *testing.T) {
 		router.ServeHTTP(recorder, request)
 		assert.Equal(t, http.StatusMethodNotAllowed, recorder.Code, path)
 	}
+	startupRecorder := httptest.NewRecorder()
+	startupRequest := httptest.NewRequest(http.MethodPost, "/api/mods/startup-settings", nil)
+	startupRequest.AddCookie(cookie)
+	router.ServeHTTP(startupRecorder, startupRequest)
+	assert.Equal(t, http.StatusMethodNotAllowed, startupRecorder.Code)
 }
 
 func TestRouteAdministratorPolicyIsDefaultDenyForMutations(t *testing.T) {
@@ -98,6 +103,9 @@ func TestRouteAdministratorPolicyIsDefaultDenyForMutations(t *testing.T) {
 	listUsers, ok := findAPIRoute("ListUsers")
 	require.True(t, ok)
 	assert.True(t, routeRequiresAdministrator(listUsers))
+	startupSettings, ok := findAPIRoute("GetModStartupSettings")
+	require.True(t, ok)
+	assert.True(t, routeRequiresAdministrator(startupSettings))
 }
 
 func TestRequireAdministratorRoleMatrix(t *testing.T) {
