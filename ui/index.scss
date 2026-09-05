@@ -1,34 +1,36 @@
+@use "sass:meta";
+
 @import "tailwindcss/base";
 @import "tailwindcss/utilities";
 @import "tailwindcss/components";
 
 :root {
   color-scheme: dark;
-  --fsm-color-bg-canvas: #111214;
-  --fsm-color-bg-sunken: #151618;
+  --fsm-color-bg-canvas: #181c1d;
+  --fsm-color-bg-sunken: #191e20;
   --fsm-color-bg-scrim: rgba(3, 6, 10, 0.72);
-  --fsm-color-surface: #191a1d;
-  --fsm-color-surface-raised: #1e2023;
-  --fsm-color-surface-overlay: #25272b;
-  --fsm-color-surface-hover: #2c2e32;
-  --fsm-color-surface-selected: #302a21;
-  --fsm-color-surface-disabled: #17181b;
-  --fsm-color-border-subtle: #2c2e32;
-  --fsm-color-border: #414349;
-  --fsm-color-border-strong: #656870;
-  --fsm-color-text: #f0f0f1;
-  --fsm-color-text-secondary: #bfc0c5;
-  --fsm-color-text-muted: #989ba4;
+  --fsm-color-surface: #272c2d;
+  --fsm-color-surface-raised: #323839;
+  --fsm-color-surface-overlay: #363e40;
+  --fsm-color-surface-hover: #3b4445;
+  --fsm-color-surface-selected: #443826;
+  --fsm-color-surface-disabled: #232728;
+  --fsm-color-border-subtle: #3d4444;
+  --fsm-color-border: #56605e;
+  --fsm-color-border-strong: #7e8b82;
+  --fsm-color-text: #f5eedf;
+  --fsm-color-text-secondary: #cecaba;
+  --fsm-color-text-muted: #a7afa5;
   --fsm-color-text-disabled: #5f6b7a;
   --fsm-color-text-inverse: #0b0f14;
   --fsm-color-link: #8fc2ff;
-  --fsm-color-accent: #eab368;
-  --fsm-color-accent-hover: #f6c785;
+  --fsm-color-accent: #f2ad43;
+  --fsm-color-accent-hover: #ffc260;
   --fsm-color-accent-pressed: #d98523;
-  --fsm-color-accent-soft: #30291f;
-  --fsm-color-accent-border: #695237;
-  --fsm-color-success: #6bcea0;
-  --fsm-color-success-soft: #143729;
+  --fsm-color-accent-soft: #45351f;
+  --fsm-color-accent-border: #a4793c;
+  --fsm-color-success: #a4d17d;
+  --fsm-color-success-soft: #2b4029;
   --fsm-color-info: #69a7ff;
   --fsm-color-info-soft: #172d4b;
   --fsm-color-warning: #f5c84c;
@@ -42,13 +44,14 @@
   --fsm-color-focus-outer: rgba(121, 184, 255, 0.28);
   --fsm-font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --fsm-font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --fsm-font-display: Bahnschrift, "Arial Narrow", "Segoe UI", sans-serif;
   --fsm-size-sidebar: 15.5rem;
   --fsm-size-topbar: 4.5rem;
   --fsm-size-content-max: 90rem;
   --fsm-radius-sm: 0.375rem;
-  --fsm-radius-control: 0.5rem;
-  --fsm-radius-card: 0.625rem;
-  --fsm-radius-panel: 0.75rem;
+  --fsm-radius-control: 0.25rem;
+  --fsm-radius-card: 0.375rem;
+  --fsm-radius-panel: 0.375rem;
   --fsm-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
   --fsm-shadow-card: 0 10px 24px rgba(0, 0, 0, 0.2);
   --fsm-shadow-raised: 0 16px 38px rgba(0, 0, 0, 0.34);
@@ -648,7 +651,7 @@ textarea:focus-visible {
   align-items: stretch;
   border-bottom: 1px solid var(--fsm-color-border-subtle);
   padding: 0.65rem 1.5rem;
-  background: rgba(21, 22, 24, 0.96);
+  background: rgba(25, 30, 32, 0.97);
   backdrop-filter: blur(14px);
 }
 
@@ -3281,7 +3284,7 @@ textarea.ui-input,
     gap: 0.8rem;
     border-bottom: 1px solid var(--fsm-color-border-subtle);
     padding: 0.7rem 1.25rem;
-    background: rgba(21, 22, 24, 0.96);
+    background: rgba(25, 30, 32, 0.97);
     backdrop-filter: blur(14px);
   }
 
@@ -3578,7 +3581,7 @@ textarea.ui-input,
     grid-template-columns: repeat(4, 1fr);
     border-top: 1px solid var(--fsm-color-border);
     padding: 0.4rem max(0.5rem, env(safe-area-inset-right)) max(0.4rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
-    background: rgba(21, 22, 24, 0.98);
+    background: rgba(25, 30, 32, 0.98);
     box-shadow: none;
     backdrop-filter: blur(14px);
   }
@@ -3747,3 +3750,5 @@ textarea.ui-input,
     transition-duration: 0.01ms !important;
   }
 }
+
+@include meta.load-css("./control-center");

@@ -156,7 +156,8 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
         <div className="ui-sidebar__brand">
             <BrandMark/>
             <div className="ui-sidebar__brand-copy">
-                <strong>Factorio Server Control</strong>
+                <strong>Factorio</strong>
+                <span>Server Control</span>
             </div>
             <button className="ui-sidebar__close" onClick={() => setIsNavOpen(false)} aria-label="Close navigation">
                 <FontAwesomeIcon icon={faXmark}/>

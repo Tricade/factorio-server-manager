@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useState} from "react";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faDownload, faPuzzlePiece, faRotate, faTrashAlt} from "@fortawesome/free-solid-svg-icons";
+import {faDownload, faPlus, faPuzzlePiece, faRotate, faTrashAlt} from "@fortawesome/free-solid-svg-icons";
 import Fuse from "fuse.js";
 import modsResource from "../../../api/resources/mods";
 import server from "../../../api/resources/server";
@@ -153,17 +153,28 @@ const Mods = ({serverStatus, canManage = false}) => {
             </div>
         </Alert>}
 
-        {canManage && !disabled && <TabControl>
-            <Tab title="Mod portal"><AddMod
-                refetchInstalledMods={fetchInstalledMods}
-                fuse={fuse}
-                factorioVersion={portalFactorioLine}
-                portalError={portalLoadError}
-                retryPortal={() => setReloadToken(token => token + 1)}
-            /></Tab>
-            <Tab title="Upload archive"><UploadMod refetchInstalledMods={fetchInstalledMods}/></Tab>
-            <Tab title="Import from save"><LoadMods refreshMods={fetchInstalledMods}/></Tab>
-        </TabControl>}
+        {canManage && !disabled && <details className="ui-mod-acquisition">
+            <summary>
+                <FontAwesomeIcon icon={faPlus}/>
+                <span className="ui-mod-acquisition__copy">
+                    <strong>Add mods</strong>
+                    <small>Mod Portal, archive upload or import from a save</small>
+                </span>
+            </summary>
+            <div className="ui-mod-acquisition__body">
+                <TabControl>
+                    <Tab title="Mod portal"><AddMod
+                        refetchInstalledMods={fetchInstalledMods}
+                        fuse={fuse}
+                        factorioVersion={portalFactorioLine}
+                        portalError={portalLoadError}
+                        retryPortal={() => setReloadToken(token => token + 1)}
+                    /></Tab>
+                    <Tab title="Upload archive"><UploadMod refetchInstalledMods={fetchInstalledMods}/></Tab>
+                    <Tab title="Import from save"><LoadMods refreshMods={fetchInstalledMods}/></Tab>
+                </TabControl>
+            </div>
+        </details>}
 
         <Panel
             title="Installed mods"

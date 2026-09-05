@@ -21,7 +21,13 @@ const fixtures = {
     '/api/checkpoints': {checkpoints: []},
     '/api/map-snapshot': {running: false, settings: {enabled: false}, snapshot: null},
     '/api/server/players': {profile_id: profile.id, server_running: true, live_available: true,
-        online_players: [], online_count: 0, players: []}
+        online_players: [], online_count: 0, players: []},
+    '/api/server/facVersion': {base_mod_version: '2.0.72'},
+    '/api/mods/list': [],
+    '/api/mods/packs/list': [],
+    '/api/mods/portal/list': {factorio_version: '2.0', results: []},
+    '/api/mods/portal/loginstatus': true,
+    '/api/mods/startup-settings': {revision: 'layout-check', groups: []}
 };
 const server = http.createServer((request, response) => {
     const pathname = new URL(request.url, 'http://localhost').pathname;
@@ -96,9 +102,40 @@ const server = http.createServer((request, response) => {
         }
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true,
             '390px: the page must not overflow horizontally');
+        console.log('PASS 390px: both process controls retain accessible names and mobile targets; no page overflow.');
+
+        runningStatus.running = false;
+        await page.goto(`${origin}/mods`);
+        await page.getByRole('heading', {name: 'Mods & mod packs', exact: true}).waitFor();
+        await page.waitForLoadState('networkidle');
+        const acquisition = page.locator('.ui-mod-acquisition');
+        assert.equal(await acquisition.count(), 1, 'Stopped administrators can add mods');
+        assert.equal(await acquisition.evaluate(details => details.open), false, 'Add mods starts collapsed');
+        const modsFits = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+        const summary = acquisition.locator('summary');
+        await summary.focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await acquisition.evaluate(details => details.open), true, 'Enter opens Add mods');
+        const search = acquisition.locator('input').first();
+        await search.fill('example search');
+        await summary.click();
+        assert.equal(await acquisition.evaluate(details => details.open), false, 'The summary closes Add mods');
+        await summary.click();
+        assert.equal(await search.inputValue(), 'example search', 'Collapsing Add mods preserves entered text');
+        for (const role of ['viewer', 'admin']) {
+            fixtures['/api/user/status'].role = role;
+            runningStatus.running = role === 'admin';
+            await page.goto(`${origin}/mods`);
+            await page.getByRole('heading', {name: 'Mods & mod packs', exact: true}).waitFor();
+            await page.waitForLoadState('networkidle');
+            assert.equal(await page.locator('.ui-mod-acquisition').count(), 0,
+                `${role === 'viewer' ? 'Viewers' : 'Administrators with a running server'} cannot open Add mods`);
+        }
+        console.log('PASS Add mods: stopped-administrator access, keyboard activation, preserved input, running/viewer guards.');
+        assert.equal(modsFits, true, '390px: collapsed Mods must not overflow horizontally');
         assert.deepEqual(pageErrors, [], 'The rendered app must not throw browser errors');
         assert.deepEqual(failures, [], 'All application fixture requests must succeed');
-        console.log('PASS 390px: both process controls retain accessible names and mobile targets; no page overflow.');
+        console.log('PASS 390px: Mods has no page overflow; no browser errors or failed fixture requests.');
     } finally {
         if (browser) await browser.close();
         server.closeAllConnections();

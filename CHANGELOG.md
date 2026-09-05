@@ -6,10 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Changed
-- Refined the web interface with neutral graphite surfaces, quieter navigation and profile badges, compact world metrics and aligned overview actions. Player sections and map metadata use fewer nested borders, with the same controls and profile context retained across desktop and mobile.
+- Redesigned the interface as an industrial factory workspace with steel-green surfaces, copper and amber accents, stronger headings and a prominent factory map beside the selected world's save and runtime information.
+- Made installed mods the primary Mods content with a collapsible Add mods section that preserves form state; reorganized profiles into a responsive library grid and overview shortcuts into a compact navigation row.
 
 ### Fixed
 - Aligned compact-navigation behavior with the visual breakpoint so hidden navigation stays inert and Escape closes the drawer on small tablets. Icon-only mobile process controls retain accessible names.
+- Anchored page-heading help text within the content width so the Mods tooltip no longer extends narrow mobile pages.
 
 ## [0.18.0] - 2026-09-05
 

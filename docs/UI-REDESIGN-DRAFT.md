@@ -1,14 +1,15 @@
 # Web interface redesign draft
 
-This draft builds on version 0.18.0 and refines the existing Foundry Night interface. It is intended for visual review before a release.
+This draft builds on version 0.18.0 and reorganizes the web interface as an industrial factory control room. It is intended for visual review before a release.
 
 ## Design direction
 
-- Neutral graphite backgrounds and shallow surface contrast replace the blue cast and decorative gradients.
-- Warm amber highlights the selected navigation icon and primary actions. Profile-scope badges use a quieter neutral treatment; manager scope remains distinct.
-- A narrower sidebar gives content more room while preserving navigation labels, profile identity and exact installed version.
-- The overview uses a smaller save icon, compact metrics and aligned action footers. Players and map metadata use separators instead of nested cards.
-- Existing fields, tables, dialogs and login use the same shared palette. Mobile layouts retain readable status text, touch targets and keyboard focus indicators.
+- Steel-green surfaces, copper edges, amber controls, squared corners and strong headings give the interface an industrial Factorio character. A subtle construction grid sits behind the workspace.
+- The factory map is the first major content on Overview. Surface selection and snapshot generation sit above it; snapshot metadata sits below it. Zoom, panning and fullscreen use the existing viewer.
+- The selected world, save metrics and runtime information share a side column. They stack after the map on small screens. Players follow the workspace, and a compact quick-access row replaces the separate Operations card.
+- Installed mods are the primary content on the Mods page. The Add mods section expands to reveal the existing portal, upload and save-import tabs. Collapsing it preserves the mounted form state.
+- Profiles appear as a responsive library grid with two columns on larger screens. Active-profile indicators and existing edit, activate and delete actions remain visible.
+- Navigation labels, exact installed version, persistent process controls and manager/profile scope remain explicit. Mobile layouts retain status text, touch targets and keyboard focus indicators.
 
 ## Preview
 
@@ -16,7 +17,7 @@ These previews use synthetic local fixture data, not a connected Factorio server
 
 ### Desktop overview
 
-![Graphite overview draft](../screenshots/Redesign_Overview.png)
+![Industrial factory overview draft](../screenshots/Redesign_Overview.png)
 
 ### Mobile overview
 
@@ -34,13 +35,11 @@ These previews use synthetic local fixture data, not a connected Factorio server
 
 The existing shared API client, profile context, routes and administrator/viewer boundary remain in use. Process lifecycle, profile switching, persistence, map generation and backend APIs retain their existing behavior. No production dependencies, external fonts, telemetry, deployment options or data migrations are introduced.
 
-Review the density, graphite/amber balance and readability on a typical server-management session before promoting the draft. Screenshots in the main README remain the released UI for comparison.
-
-One existing mobile issue remains a review item: the long Mods page heading's hidden help tooltip can extend the document width on narrow screens. The tooltip positioning is outside this visual draft; the mod tables themselves scroll within their containers.
+Review the map prominence, industrial styling and everyday navigation before promoting the draft. Screenshots in the main README remain the released UI for comparison.
 
 ## Browser regression check
 
-The standalone check serves the built application on an ephemeral loopback port with synthetic read-only API fixtures. It verifies hidden-navigation focus behavior and Escape handling at 1024, 1050 and 1099 pixels, desktop navigation at 1100 pixels, and named process controls with 40-pixel touch targets at 390 pixels. It rejects outbound browser requests and never connects to a real Factorio server.
+The standalone check serves the built application on an ephemeral loopback port with synthetic read-only API fixtures. It verifies hidden-navigation focus behavior and Escape handling at 1024, 1050 and 1099 pixels, desktop navigation at 1100 pixels, named process controls with 40-pixel touch targets at 390 pixels, and mobile Mods overflow. It also checks keyboard expansion of Add mods, form-state retention across collapse/reopen, and viewer/running-server restrictions. It rejects outbound browser requests and never connects to a real Factorio server.
 
 After the standard `npm ci`, `npm test` and `npm run build` checks, run from the repository root:
 

@@ -7,11 +7,9 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import savesResource from "../../api/resources/saves";
 import serverResource from "../../api/resources/server";
-import PageHeader from "../components/PageHeader";
 import Panel from "../components/Panel";
 import Alert from "../components/Alert";
 import EmptyState from "../components/EmptyState";
-import ScopeBadge from "../components/ScopeBadge";
 import Button from "../components/Button";
 import MapImageViewer, {entityDetailZoom, MapImageLightbox} from "../components/MapImageViewer";
 import PlayerOverviewPanel from "../components/PlayerOverviewPanel";
@@ -194,94 +192,68 @@ const Controls = ({serverStatus, canManage = false}) => {
         }
     };
 
-    return <>
-        <PageHeader title="Overview"/>
+    return <div className="ui-control-center">
+        <header className="ui-overview-heading">
+            <div>
+                <p className="ui-page-eyebrow">Factory operations</p>
+                <h1 className="ui-page-title">Overview</h1>
+            </div>
+            <div className="ui-overview-heading__profile">
+                <FontAwesomeIcon icon={faLayerGroup}/>
+                <div><span>Active profile</span><strong>{activeProfile?.name || "Loading profile…"}</strong></div>
+            </div>
+        </header>
 
         {serverStatus?.stopping && <Alert type="warning" className="mb-5">
             Factorio is saving the active world and shutting down.
         </Alert>}
 
-        <div className="ui-dashboard-grid">
+        <div className="ui-factory-workspace">
             <Panel
-                className="ui-world-snapshot"
-                title="Current world"
-                help="This is the save configured for the next start. While Factorio is running, it follows the loaded save."
-                headerAction={<ScopeBadge/>}
-                content={isLoading
-                    ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faHardDrive} spin/><p className="mt-3">Reading save data…</p></div></div>
-                    : saveLoadError
-                        ? <Alert type="danger"><div className="flex flex-wrap items-center gap-3"><span>{saveLoadError}</span><Button type="secondary" size="sm" onClick={() => setOverviewReloadToken(token => token + 1)}>Retry</Button></div></Alert>
-                    : activeSave
-                        ? <div className="ui-world-snapshot__content">
-                            {checkpointLoadError && <Alert type="warning" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{checkpointLoadError}</span><Button type="secondary" size="sm" onClick={() => setOverviewReloadToken(token => token + 1)}>Retry</Button></div></Alert>}
-                            <div className="ui-world-snapshot__identity">
-                                <div className="ui-world-snapshot__icon"><FontAwesomeIcon icon={faFloppyDisk}/></div>
-                                <div>
-                                    <span>Selected save</span>
-                                    <h2 title={activeSave.name}>{activeSave.name}</h2>
-                                    <p>Last saved {formatDate(activeSave.last_mod)}</p>
-                                </div>
-                            </div>
-                            <div className="ui-fact-grid">
-                                <div className="ui-fact"><span>File size</span><strong>{formatSize(activeSave.size)}</strong></div>
-                                <div className="ui-fact"><span>Stored saves</span><strong>{activeProfile?.save_count ?? sortedSaves.length}</strong></div>
-                                <div className="ui-fact"><span>Installed mods</span><strong>{activeProfile?.mod_count ?? "—"}</strong></div>
-                                <div className="ui-fact"><span>Fixed checkpoints</span><strong>{checkpointLoadError ? "Unavailable" : checkpoints.length}</strong></div>
-                            </div>
-                        </div>
-                        : <>
-                            {checkpointLoadError && <Alert type="warning" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{checkpointLoadError}</span><Button type="secondary" size="sm" onClick={() => setOverviewReloadToken(token => token + 1)}>Retry</Button></div></Alert>}
-                            <EmptyState icon={faHardDrive} title="No world in this profile"/>
-                        </>}
-                actions={<>
-                    <Link className="ui-button ui-button--secondary ui-button--sm" to="/saves"><FontAwesomeIcon icon={faFloppyDisk}/> Saves & checkpoints</Link>
-                    {activeSave && <a className="ui-button ui-button--secondary ui-button--sm" href={`/api/saves/dl/${encodeURIComponent(activeSave.name)}`}><FontAwesomeIcon icon={faHardDrive}/> Download save</a>}
-                </>}
-            />
-
-            <Panel
-                title="Profile runtime"
-                headerAction={<ScopeBadge/>}
-                content={<div className="ui-kv-list">
-                    <div><span>Release target</span><strong>{targetLabel(activeProfile?.release_target)}</strong></div>
-                    <div><span>Game endpoint</span><strong>{activeProfile?.bind_ip || "0.0.0.0"}:{activeProfile?.port || 34197} / UDP</strong></div>
-                    <div><span>Latest checkpoint</span><strong>{checkpointLoadError ? "Unavailable" : latestCheckpoint ? formatDate(latestCheckpoint.created_at) : "None"}</strong></div>
+                className="ui-map-snapshot ui-factory-panel"
+                title="Factory map"
+                help="Generated from a temporary copy of the latest completed save. The exporter is never added to the active profile or written back to the save."
+                headerAction={<div className="flex flex-wrap items-center gap-2">
+                    <span className={`ui-status-badge ${!mapSnapshotsEnabled ? "ui-status-badge--stopped" : mapState?.running ? "ui-status-badge--warning" : mapSnapshot ? "ui-status-badge--running" : ""}`}>
+                        {!mapSnapshotsEnabled ? "Disabled" : mapState?.running ? "Generating" : mapSnapshot ? "Ready" : "No snapshot"}
+                    </span>
+                    {canManage ? <Button
+                        type="secondary"
+                        size="sm"
+                        isLoading={Boolean(mapState?.running)}
+                        isDisabled={!mapSnapshotsEnabled || !activeSave || Boolean(mapLoadError) || Boolean(mapState?.running)}
+                        title={!mapSnapshotsEnabled ? "Enable factory map snapshots under Server settings first." : undefined}
+                        onClick={refreshMapSnapshot}
+                    ><FontAwesomeIcon icon={faArrowsRotate}/> Generate now</Button> : null}
                 </div>}
-                actions={<>
-                    <Link className="ui-button ui-button--secondary ui-button--sm" to="/server-settings"><FontAwesomeIcon icon={faServer}/> Server configuration</Link>
-                    <Link className="ui-button ui-button--secondary ui-button--sm" to="/releases"><FontAwesomeIcon icon={faCloudArrowDown}/> Version & mode</Link>
-                </>}
-            />
-        </div>
-
-        {activeProfile?.id && <PlayerOverviewPanel profileID={activeProfile.id} serverStatus={serverStatus}/>}
-
-        <Panel
-            className="ui-map-snapshot mt-5"
-            title="Factory map"
-            help="Generated from a temporary copy of the latest completed save. The exporter is never added to the active profile or written back to the save."
-            headerAction={<div className="flex flex-wrap items-center gap-2">
-                <ScopeBadge/>
-                <span className={`ui-status-badge ${!mapSnapshotsEnabled ? "ui-status-badge--stopped" : mapState?.running ? "ui-status-badge--warning" : mapSnapshot ? "ui-status-badge--running" : ""}`}>
-                    {!mapSnapshotsEnabled ? "Disabled" : mapState?.running ? "Generating" : mapSnapshot ? "Ready" : "No snapshot"}
-                </span>
-            </div>}
-            content={isLoadingMap
-                ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faMap} spin/><p className="mt-3">Loading map…</p></div></div>
-                : <>
-                    {mapLoadError && <Alert type="danger" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{mapLoadError}</span><Button type="secondary" size="sm" onClick={() => loadMapSnapshot(true)}>Retry</Button></div></Alert>}
-                    {mapState?.last_error && <Alert type="warning" className="mb-4">{mapState.last_error}</Alert>}
-                    {mapSnapshot && activeSurface
-                        ? <div className="ui-map-snapshot__content">
-                            <div className="ui-map-snapshot__toolbar">
-                                <div>
-                                    <span>Surface</span>
-                                    <select className="ui-select" aria-label="Map surface" value={activeSurface.id} onChange={event => setSelectedSurface(event.target.value)}>
-                                        {mapSurfaceGroups.map(group => <optgroup label={group.label} key={group.kind}>
-                                            {group.surfaces.map(surface => <option value={surface.id} key={surface.id}>{mapSurfaceLabel(surface)}</option>)}
-                                        </optgroup>)}
-                                    </select>
+                content={isLoadingMap
+                    ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faMap} spin/><p className="mt-3">Loading map…</p></div></div>
+                    : <>
+                        {mapLoadError && <Alert type="danger" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{mapLoadError}</span><Button type="secondary" size="sm" onClick={() => loadMapSnapshot(true)}>Retry</Button></div></Alert>}
+                        {mapState?.last_error && <Alert type="warning" className="mb-4">{mapState.last_error}</Alert>}
+                        {mapSnapshot && activeSurface
+                            ? <div className="ui-map-snapshot__content">
+                                <div className="ui-map-snapshot__toolbar">
+                                    <div>
+                                        <span>Surface</span>
+                                        <select className="ui-select" aria-label="Map surface" value={activeSurface.id} onChange={event => setSelectedSurface(event.target.value)}>
+                                            {mapSurfaceGroups.map(group => <optgroup label={group.label} key={group.kind}>
+                                                {group.surfaces.map(surface => <option value={surface.id} key={surface.id}>{mapSurfaceLabel(surface)}</option>)}
+                                            </optgroup>)}
+                                        </select>
+                                    </div>
                                 </div>
+                                {mapEntityError && <Alert type="warning" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{mapEntityError}</span><Button type="secondary" size="sm" onClick={() => setMapEntityReloadToken(token => token + 1)}>Retry detail</Button></div></Alert>}
+                                <MapImageViewer
+                                    src={mapImageURL}
+                                    alt={mapImageAlt}
+                                    view={mapView}
+                                    setView={setMapView}
+                                    isPixelated={activeSurfaceKind === "platform"}
+                                    entityOverlay={mapEntityOverlay}
+                                    detailZoom={activeSurfaceDetailZoom}
+                                    onFullscreen={() => setIsMapLightboxOpen(true)}
+                                />
                                 <div className="ui-map-snapshot__facts">
                                     <span><small>Snapshot</small><strong>{formatDate(mapSnapshot.generated_at)}</strong></span>
                                     <span><small>Source save</small><strong title={mapSnapshot.save_name}>{mapSnapshot.save_name}</strong></span>
@@ -290,58 +262,91 @@ const Controls = ({serverStatus, canManage = false}) => {
                                         ? "Not available"
                                         : isLoadingMapEntities ? "Loading…" : mapEntityError ? "Unavailable" : mapEntities === null ? "Zoom in to load" : `${mapEntities.length.toLocaleString()} footprints`}</strong></span>
                                 </div>
+                                <MapImageLightbox
+                                    src={mapImageURL}
+                                    alt={mapImageAlt}
+                                    title={activeSurfaceLabel}
+                                    isOpen={isMapLightboxOpen}
+                                    close={() => setIsMapLightboxOpen(false)}
+                                    view={mapView}
+                                    setView={setMapView}
+                                    isPixelated={activeSurfaceKind === "platform"}
+                                    entityOverlay={mapEntityOverlay}
+                                    detailZoom={activeSurfaceDetailZoom}
+                                />
                             </div>
-                            {mapEntityError && <Alert type="warning" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{mapEntityError}</span><Button type="secondary" size="sm" onClick={() => setMapEntityReloadToken(token => token + 1)}>Retry detail</Button></div></Alert>}
-                            <MapImageViewer
-                                src={mapImageURL}
-                                alt={mapImageAlt}
-                                view={mapView}
-                                setView={setMapView}
-                                isPixelated={activeSurfaceKind === "platform"}
-                                entityOverlay={mapEntityOverlay}
-                                detailZoom={activeSurfaceDetailZoom}
-                                onFullscreen={() => setIsMapLightboxOpen(true)}
-                            />
-                            <MapImageLightbox
-                                src={mapImageURL}
-                                alt={mapImageAlt}
-                                title={activeSurfaceLabel}
-                                isOpen={isMapLightboxOpen}
-                                close={() => setIsMapLightboxOpen(false)}
-                                view={mapView}
-                                setView={setMapView}
-                                isPixelated={activeSurfaceKind === "platform"}
-                                entityOverlay={mapEntityOverlay}
-                                detailZoom={activeSurfaceDetailZoom}
-                            />
-                        </div>
-                        : <EmptyState
-                            icon={faMap}
-                            title={mapState?.running ? "Generating first map snapshot" : activeSave ? "No map snapshot yet" : "No world to map"}
-                        />}
-                </>}
-            actions={canManage ? <Button
-                type="secondary"
-                size="sm"
-                isLoading={Boolean(mapState?.running)}
-                isDisabled={!mapSnapshotsEnabled || !activeSave || Boolean(mapLoadError) || Boolean(mapState?.running)}
-                title={!mapSnapshotsEnabled ? "Enable factory map snapshots under Server settings first." : undefined}
-                onClick={refreshMapSnapshot}
-            ><FontAwesomeIcon icon={faArrowsRotate}/> Generate now</Button> : null}
-        />
+                            : <EmptyState
+                                icon={faMap}
+                                title={mapState?.running ? "Generating first map snapshot" : activeSave ? "No map snapshot yet" : "No world to map"}
+                            />}
+                    </>}
+            />
+            <aside className="ui-control-room" aria-label="World and runtime">
+                <Panel
+                    className="ui-world-snapshot"
+                    title="Current world"
+                    help="This is the save configured for the next start. While Factorio is running, it follows the loaded save."
+                    content={isLoading
+                        ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faHardDrive} spin/><p className="mt-3">Reading save data…</p></div></div>
+                        : saveLoadError
+                            ? <Alert type="danger"><div className="flex flex-wrap items-center gap-3"><span>{saveLoadError}</span><Button type="secondary" size="sm" onClick={() => setOverviewReloadToken(token => token + 1)}>Retry</Button></div></Alert>
+                        : activeSave
+                            ? <div className="ui-world-snapshot__content">
+                                {checkpointLoadError && <Alert type="warning" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{checkpointLoadError}</span><Button type="secondary" size="sm" onClick={() => setOverviewReloadToken(token => token + 1)}>Retry</Button></div></Alert>}
+                                <div className="ui-world-snapshot__identity">
+                                    <div className="ui-world-snapshot__icon"><FontAwesomeIcon icon={faFloppyDisk}/></div>
+                                    <div>
+                                        <span>Selected save</span>
+                                        <h2 title={activeSave.name}>{activeSave.name}</h2>
+                                        <p>Last saved {formatDate(activeSave.last_mod)}</p>
+                                    </div>
+                                </div>
+                                <div className="ui-fact-grid">
+                                    <div className="ui-fact"><span>File size</span><strong>{formatSize(activeSave.size)}</strong></div>
+                                    <div className="ui-fact"><span>Stored saves</span><strong>{activeProfile?.save_count ?? sortedSaves.length}</strong></div>
+                                    <div className="ui-fact"><span>Installed mods</span><strong>{activeProfile?.mod_count ?? "—"}</strong></div>
+                                    <div className="ui-fact"><span>Fixed checkpoints</span><strong>{checkpointLoadError ? "Unavailable" : checkpoints.length}</strong></div>
+                                </div>
+                            </div>
+                            : <>
+                                {checkpointLoadError && <Alert type="warning" className="mb-4"><div className="flex flex-wrap items-center gap-3"><span>{checkpointLoadError}</span><Button type="secondary" size="sm" onClick={() => setOverviewReloadToken(token => token + 1)}>Retry</Button></div></Alert>}
+                                <EmptyState icon={faHardDrive} title="No world in this profile"/>
+                            </>}
+                    actions={<>
+                        <Link className="ui-button ui-button--secondary ui-button--sm" to="/saves"><FontAwesomeIcon icon={faFloppyDisk}/> Saves & checkpoints</Link>
+                        {activeSave && <a className="ui-button ui-button--secondary ui-button--sm" href={`/api/saves/dl/${encodeURIComponent(activeSave.name)}`}><FontAwesomeIcon icon={faHardDrive}/> Download save</a>}
+                    </>}
+                />
 
-        <Panel
-            className="mt-5"
-            title="Operations"
-            content={<div className="ui-operation-links">
+                <Panel
+                    className="ui-runtime-summary"
+                    title="Runtime"
+                    content={<div className="ui-kv-list">
+                        <div><span>Release target</span><strong>{targetLabel(activeProfile?.release_target)}</strong></div>
+                        <div><span>Game endpoint</span><strong>{activeProfile?.bind_ip || "0.0.0.0"}:{activeProfile?.port || 34197} / UDP</strong></div>
+                        <div><span>Latest checkpoint</span><strong>{checkpointLoadError ? "Unavailable" : latestCheckpoint ? formatDate(latestCheckpoint.created_at) : "None"}</strong></div>
+                    </div>}
+                    actions={<>
+                        <Link className="ui-button ui-button--secondary ui-button--sm" to="/server-settings"><FontAwesomeIcon icon={faServer}/> Server configuration</Link>
+                        <Link className="ui-button ui-button--secondary ui-button--sm" to="/releases"><FontAwesomeIcon icon={faCloudArrowDown}/> Version & mode</Link>
+                    </>}
+                />
+            </aside>
+        </div>
+
+        {activeProfile?.id && <PlayerOverviewPanel profileID={activeProfile.id} serverStatus={serverStatus}/>}
+
+        <div className="ui-quick-access">
+            <span>Quick access</span>
+            <nav className="ui-operation-links" aria-label="Quick access">
                 <Link to="/mods"><FontAwesomeIcon icon={faPuzzlePiece}/><span><strong>Mods</strong><small>{activeProfile?.mod_count ?? "—"} installed</small></span></Link>
                 <Link to="/game-settings"><FontAwesomeIcon icon={faGamepad}/><span><strong>Game settings</strong><small>Runtime configuration</small></span></Link>
                 {canManage && <Link to="/console"><FontAwesomeIcon icon={faTerminal}/><span><strong>Console</strong><small>Commands and live output</small></span></Link>}
                 <Link to="/logs"><FontAwesomeIcon icon={faFileLines}/><span><strong>Logs</strong><small>Recent Factorio output</small></span></Link>
                 <Link to="/profiles"><FontAwesomeIcon icon={faLayerGroup}/><span><strong>Profiles</strong><small>Switch saved setups</small></span></Link>
-            </div>}
-        />
-    </>;
+            </nav>
+        </div>
+    </div>;
 };
 
 export default Controls;
