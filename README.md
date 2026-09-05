@@ -104,6 +104,10 @@ The implementation details and deliberate boundaries are documented in [TECHNICA
 
 ![Factorio Server Control mod management](screenshots/Screenshot_Mods.png)
 
+### Profile-scoped mod startup settings
+
+![Factorio Server Control mod startup settings](screenshots/Screenshot_Mod_Startup_Settings.png)
+
 ### Factorio version and Space Age mode
 
 ![Factorio Server Control version and mode selection](screenshots/Screenshot_Version_Mode.png)

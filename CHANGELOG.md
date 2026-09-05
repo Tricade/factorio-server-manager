@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-05
+
 ### Added
 - Added an administrator-only, profile-scoped Mod startup settings editor that asks the active profile's exact Factorio engine to evaluate effective setting definitions and renders booleans, numbers, strings, colors and fixed selections with localized labels, constraints and reset actions.
 
