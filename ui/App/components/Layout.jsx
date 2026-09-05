@@ -67,7 +67,7 @@ const ExternalLink = ({item}) => {
 
 const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, socketState, canManage = false}) => {
     const [isNavOpen, setIsNavOpen] = useState(false);
-    const [isCompactNavigation, setIsCompactNavigation] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
+    const [isCompactNavigation, setIsCompactNavigation] = useState(() => window.matchMedia("(max-width: 1099px)").matches);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const [switchingProfileID, setSwitchingProfileID] = useState("");
     const profileMenuRef = useRef(null);
@@ -86,7 +86,7 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
     const revision = !["", "unknown", "local"].includes(__FSM_UI_REVISION__) ? ` · ${__FSM_UI_REVISION__.slice(0, 8)}` : "";
 
     useEffect(() => {
-        const media = window.matchMedia("(max-width: 1023px)");
+        const media = window.matchMedia("(max-width: 1099px)");
         const update = event => setIsCompactNavigation(event.matches);
         if (media.addEventListener) media.addEventListener("change", update);
         else media.addListener(update);
