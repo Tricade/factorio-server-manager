@@ -1,6 +1,6 @@
 {
   "name": "factorio-server-manager",
-  "version": "0.17.6",
+  "version": "0.18.0",
   "private": true,
   "allowScripts": {
     "@parcel/watcher": false,
