@@ -65,7 +65,7 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 
 ### Modern interface and deployment
 
-- Responsive **Foundry Night** UI for desktop and mobile.
+- Responsive **Foundry Night** UI for desktop and mobile, with a graphite palette, compact overview and persistent server controls.
 - Persistent active-profile context, exact UI version/revision and cache-busted frontend assets.
 - Docker and Docker Compose builds produced directly from this repository.
 - `linux/amd64` production image matching the official Factorio headless server platform.
@@ -75,6 +75,8 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 The implementation details and deliberate boundaries are documented in [TECHNICAL-NOTES.md](TECHNICAL-NOTES.md). User-visible changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
+
+The proposed visual refresh is documented in [the redesign draft](docs/UI-REDESIGN-DRAFT.md), with desktop and mobile previews. The screenshots below show the released interface for comparison.
 
 ### Operational overview
 

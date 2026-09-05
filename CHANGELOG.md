@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- Refined the web interface with neutral graphite surfaces, quieter navigation and profile badges, compact world metrics and aligned overview actions. Player sections and map metadata use fewer nested borders, with the same controls and profile context retained across desktop and mobile.
+
+### Fixed
+- Aligned compact-navigation behavior with the visual breakpoint so hidden navigation stays inert and Escape closes the drawer on small tablets. Icon-only mobile process controls retain accessible names.
+
 ## [0.18.0] - 2026-09-05
 
 ### Added
