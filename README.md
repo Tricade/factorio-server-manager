@@ -60,6 +60,7 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 - Explicit base Factorio/Space Age switching, including persistent built-in feature-mod state.
 - Mod Portal search filtered to the active Factorio compatibility line.
 - Recursive required-dependency resolution plus opt-in optional/recommended dependencies.
+- Profile-scoped startup-setting controls evaluated by the active profile's exact Factorio engine, including localized labels, constraints, defaults and safe reset actions.
 - Reusable mod packs and engine-verified import from an existing save, including worlds created on an older Factorio release and later upgraded to Space Age or a different mod set.
 
 ### Modern interface and deployment
@@ -140,7 +141,7 @@ The manager serves HTTP inside the container. The direct registry example sets `
 
 Factorio Server Control has no built-in analytics or telemetry. Manager accounts, configuration, logs, saves and map snapshots remain in the documented persistent mounts and are not sent to the fork maintainer. Release discovery and installation contact Factorio's official HTTPS services; mod search, authentication and downloads contact the official Factorio Mod Portal only when those features are used. When connecting a Factorio account, its password is submitted to `auth.factorio.com` over HTTPS but is not retained; the returned username/user key is stored with restrictive permissions in `/opt/fsm-data/factorio.auth`. Optional Factory Radio and Ko-fi links open their respective third-party sites only when selected in the browser. Review those services' own privacy terms before using them.
 
-Development-time use of generative-AI tools is disclosed separately in [AI-DISCLOSURE.md](AI-DISCLOSURE.md). Those tools are not part of the deployed application and receive no manager runtime data.
+Development-time use of generative-AI tools is disclosed separately in [AI-DISCLOSURE.md](AI-DISCLOSURE.md). Those tools are not part of the deployed application and receive no manager runtime data. Evaluating mod startup settings uses only the locally installed Factorio binary and enabled local mod files; it does not add another outbound service.
 
 ## Required persistent storage
 
@@ -179,6 +180,12 @@ The world generator appears only while the active profile has no save. Once a sa
 ### Factory maps
 
 The manager renders chart pixels through the installed Factorio headless binary in a disposable workspace. Factorio 2.0.61 or newer is required. Completed images live below persistent `/opt/fsm-data/map-snapshots/<profile-id>` and are served only by authenticated routes. Manager-wide settings select automatic, manual-only or fully disabled generation, can postpone automatic work while players are online, and can exclude space platforms before export. Surface choices are grouped into planets, named space platforms and other/modded surfaces. Small platforms receive a higher-resolution categorized building-footprint overlay, while the underlying chart remains Factorio's one-pixel-per-tile map data. The next completed snapshot replaces any older platform images and metadata.
+
+### Mod startup settings
+
+Stop Factorio, open **Mods → Mod startup settings**, then edit the effective startup settings exposed by the enabled mods. The manager runs the active profile's exact installed Factorio version in a disposable local workspace, validates the complete candidate and atomically replaces `mod-settings.dat` only after Factorio accepts it. Only administrators can read these values because mod string settings may contain private data. Runtime-global and per-player settings remain unchanged.
+
+Each profile retains its own settings through activation and container recreation. Creating a mod pack includes the current `mod-settings.dat`; loading that pack activates its stored values together with its mod set. Importing a mod set from a save instead preserves the active profile's existing settings byte for byte. A newly imported mod with no stored entry uses its own Factorio default, while unknown entries are retained for compatibility.
 
 ### Fixed checkpoints
 

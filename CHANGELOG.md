@@ -3,6 +3,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- Added an administrator-only, profile-scoped Mod startup settings editor that asks the active profile's exact Factorio engine to evaluate effective setting definitions and renders booleans, numbers, strings, colors and fixed selections with localized labels, constraints and reset actions.
+
+### Changed
+- Mod packs explicitly carry `mod-settings.dat`: creating a pack snapshots the active values and loading a pack activates its stored values with the mod set.
+- Save-mod import now preserves the active profile's existing mod settings byte for byte; newly imported settings that have no stored value continue to use their Factorio defaults.
+
+### Security
+- Mod-setting values are restricted to administrators, excluded from logs and generic error details, validated in an isolated local Factorio workspace and committed with bounded parsing plus atomic replacement only after successful engine validation.
+
 ## [0.17.6] - 2026-09-03
 
 ### Changed
