@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-09-09
+
+### Changed
+- Updated the Sass build compiler from 1.103.1 to 1.104.0, including upstream CSS numeric and color compatibility fixes.
+- Updated the transitive SVGO build dependency from 4.0.2 to 4.1.0 and its compatible CSS-selector dependencies. Existing UI, game settings, profiles and persistent-storage layouts are unchanged.
+
+### Security
+- Included upstream SVGO `removeScripts` fixes for executable content in SVG `foreignObject` elements and executable-link bypasses (GHSA-4vpr-x523-8j87 and GHSA-w27v-7q3p-w38r). SVGO is a development dependency and is not shipped as a runtime SVG-processing service.
+- Updated the transitive build dependency `js-yaml` from 4.3.1 to 4.3.2 to enforce the merge-work budget for empty YAML mappings (GHSA-2883-xcg3-v3hh).
+
 ## [0.18.0] - 2026-09-05
 
 ### Added
