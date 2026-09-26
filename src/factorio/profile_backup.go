@@ -162,14 +162,16 @@ func ExportProfileBackup(options ProfileBackupOptions) (string, error) {
 	backup := ProfileBackup{Kind: profileBackupKind, FormatVersion: 1, CreatedAt: profileNow().UTC()}
 	budget := &backupCopyBudget{}
 	seen := map[string]bool{}
-	for _, id := range options.ProfileIDs {
-		index := profileIndex(manifest, id)
-		if index < 0 || seen[id] {
+	for _, requestedID := range options.ProfileIDs {
+		index := profileIndex(manifest, requestedID)
+		if index < 0 || seen[requestedID] {
 			return "", ErrInvalidBackup
 		}
-		seen[id] = true
+		seen[requestedID] = true
 		profile := manifest.Profiles[index]
-		id = filepath.Base(id)
+		// Resolve request selections to validated manifest entries before using
+		// IDs as storage paths; never derive a path from the request itself.
+		id := profile.ID
 		sources := map[string]string{}
 		for _, dir := range []string{"saves", "mods", "config"} {
 			sources[dir] = filepath.Join(profileDirectory(id), dir)
@@ -469,7 +471,7 @@ func ImportProfileBackup(input io.ReaderAt, size int64, selections []ProfileBack
 			return ProfileState{}, err
 		}
 		created = append(created, profile.ID)
-		root := filepath.Join(staging, "profiles", filepath.Base(selection.ID))
+		root := filepath.Join(staging, "profiles", item.ID)
 		profile.Name = name
 		profile.Description = description
 		profile.Active = false

@@ -159,6 +159,37 @@ func TestProfileBackupAllProfilesWithoutSavesAndSubsetImport(t *testing.T) {
 	assert.Equal(t, initial.ActiveProfileID, state.ActiveProfileID)
 }
 
+func TestProfileBackupSelectionsOnlyResolveKnownIDs(t *testing.T) {
+	env, initial := setupBackupTest(t)
+	id := initial.ActiveProfileID
+	data := exportTestBackup(t, []string{id}, true, false)
+	before, err := os.ReadFile(filepath.Join(profileRootPath(), profileManifestName))
+	require.NoError(t, err)
+	for _, requestedID := range []string{
+		"", ".", "..", "../" + id, id + "/../" + id,
+		filepath.Join(env.root, "profiles", id), "not-a-profile", "0123456789abcdef",
+	} {
+		t.Run(requestedID, func(t *testing.T) {
+			path, err := ExportProfileBackup(ProfileBackupOptions{ProfileIDs: []string{requestedID}})
+			require.ErrorIs(t, err, ErrInvalidBackup)
+			assert.Empty(t, path)
+			_, err = ImportProfileBackup(bytes.NewReader(data), int64(len(data)), []ProfileBackupSelection{{ID: requestedID, Name: "Imported"}})
+			require.ErrorIs(t, err, ErrInvalidBackup)
+		})
+	}
+	_, err = ExportProfileBackup(ProfileBackupOptions{ProfileIDs: []string{id, id}})
+	require.ErrorIs(t, err, ErrInvalidBackup)
+	_, err = ImportProfileBackup(bytes.NewReader(data), int64(len(data)), []ProfileBackupSelection{{ID: id, Name: "Imported"}, {ID: id, Name: "Duplicate"}})
+	require.ErrorIs(t, err, ErrInvalidBackup)
+	after, err := os.ReadFile(filepath.Join(profileRootPath(), profileManifestName))
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+	entries, err := os.ReadDir(profileRootPath())
+	require.NoError(t, err)
+	assert.Len(t, entries, 2, "only the original profile and manifest remain")
+	assert.Empty(t, env.installLog)
+}
+
 func TestProfileBackupImportFailureIsAllOrNothing(t *testing.T) {
 	_, initial := setupBackupTest(t)
 	state, err := CreateProfile("Second", "", ProfileSourceClone)
