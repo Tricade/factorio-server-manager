@@ -144,11 +144,7 @@ jobs:
             echo "Move the release entries from Unreleased into a dated [$RELEASE_TAG] section before tagging." >&2
             exit 1
           }
-          grep -Fq "<Changes>$RELEASE_TAG:" templates/factorio-server-manager.xml
-          if grep -Fq "$RELEASE_TAG (planned)" templates/factorio-server-manager.xml; then
-            echo "The Unraid template still marks $RELEASE_TAG as planned." >&2
-            exit 1
-          fi
+          python3 scripts/validate-unraid-template.py --release "$RELEASE_TAG"
 
           existing_release_ids=$(
             gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
@@ -676,7 +672,7 @@ jobs:
           test "$(node -p "require('./package-lock.json').packages[''].version")" = "$RELEASE_TAG"
           test -f "$notes_file"
           grep -Eq "^## \[$RELEASE_TAG\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md
-          grep -Fq "<Changes>$RELEASE_TAG:" templates/factorio-server-manager.xml
+          python3 scripts/validate-unraid-template.py --release "$RELEASE_TAG"
 
           draft_release_ids=$(
             gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
