@@ -121,7 +121,15 @@ func extractBackup(reader *zip.Reader, root string, allowed func(string) bool) e
 		if entry.FileInfo().IsDir() {
 			continue
 		}
-		destination := filepath.Join(root, filepath.FromSlash(entry.Name))
+		relative := filepath.FromSlash(entry.Name)
+		if !filepath.IsLocal(relative) {
+			return ErrInvalidBackup
+		}
+		destination := filepath.Join(root, relative)
+		// Keep the boundary next to the write as well as in archive validation.
+		if !strings.HasPrefix(destination, filepath.Clean(root)+string(os.PathSeparator)) {
+			return ErrInvalidBackup
+		}
 		if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
 			return err
 		}

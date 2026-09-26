@@ -169,6 +169,7 @@ func ExportProfileBackup(options ProfileBackupOptions) (string, error) {
 		}
 		seen[id] = true
 		profile := manifest.Profiles[index]
+		id = filepath.Base(id)
 		sources := map[string]string{}
 		for _, dir := range []string{"saves", "mods", "config"} {
 			sources[dir] = filepath.Join(profileDirectory(id), dir)
@@ -216,7 +217,7 @@ func ExportProfileBackup(options ProfileBackupOptions) (string, error) {
 				return "", err
 			}
 			for _, checkpoint := range item.Checkpoints {
-				if err := budget.copy(filepath.Join(checkpointFilesDirectory(id), checkpoint.FileName), filepath.Join(root, "checkpoints", checkpoint.FileName)); err != nil {
+				if err := budget.copy(filepath.Join(checkpointFilesDirectory(id), filepath.Base(checkpoint.FileName)), filepath.Join(root, "checkpoints", filepath.Base(checkpoint.FileName))); err != nil {
 					return "", err
 				}
 			}
@@ -284,8 +285,9 @@ func stageProfileBackup(input io.ReaderAt, size int64) (ProfileBackup, string, e
 		if validateProfileID(item.ID) != nil || ids[item.ID] {
 			return backup, "", ErrInvalidBackup
 		}
+		item.ID = filepath.Base(item.ID)
 		ids[item.ID] = true
-		if err := validateBackupProfile(filepath.Join(staging, "profiles", item.ID), item); err != nil {
+		if err := validateBackupProfile(filepath.Join(staging, "profiles", filepath.Base(item.ID)), item); err != nil {
 			return backup, "", err
 		}
 	}
@@ -357,7 +359,7 @@ func validateBackupProfile(root string, item *BackupProfile) error {
 		if checkpoint.SourceSave != "" && ValidatePathElement(checkpoint.SourceSave) != nil {
 			return ErrInvalidBackup
 		}
-		if verifyFactorioSaveZip(filepath.Join(root, "checkpoints", checkpoint.FileName)) != nil {
+		if verifyFactorioSaveZip(filepath.Join(root, "checkpoints", filepath.Base(checkpoint.FileName))) != nil {
 			return ErrInvalidBackup
 		}
 	}
@@ -467,7 +469,7 @@ func ImportProfileBackup(input io.ReaderAt, size int64, selections []ProfileBack
 			return ProfileState{}, err
 		}
 		created = append(created, profile.ID)
-		root := filepath.Join(staging, "profiles", selection.ID)
+		root := filepath.Join(staging, "profiles", filepath.Base(selection.ID))
 		profile.Name = name
 		profile.Description = description
 		profile.Active = false
@@ -513,7 +515,7 @@ func ImportProfileBackup(input io.ReaderAt, size int64, selections []ProfileBack
 		}
 		for _, checkpoint := range item.Checkpoints {
 			metadata := checkpointMetadata{SchemaVersion: checkpointSchemaVersion, ID: checkpoint.ID, CreatedAt: checkpoint.CreatedAt, Trigger: checkpoint.Trigger, SourceSave: checkpoint.SourceSave}
-			if err := persistCheckpoint(profile.ID, metadata, filepath.Join(root, "checkpoints", checkpoint.FileName)); err != nil {
+			if err := persistCheckpoint(profile.ID, metadata, filepath.Join(root, "checkpoints", filepath.Base(checkpoint.FileName))); err != nil {
 				return ProfileState{}, err
 			}
 		}
