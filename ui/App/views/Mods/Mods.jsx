@@ -22,6 +22,7 @@ import ModList from "./components/ModList";
 import ModStartupSettings from "./components/ModStartupSettings";
 import {useProfiles} from "../../context/ProfileContext";
 import ScopeBadge from "../../components/ScopeBadge";
+import BackupRestore from "../../components/BackupRestore";
 
 const Mods = ({serverStatus, canManage = false}) => {
     const {activeProfile, refreshProfiles} = useProfiles();
@@ -162,6 +163,7 @@ const Mods = ({serverStatus, canManage = false}) => {
                 retryPortal={() => setReloadToken(token => token + 1)}
             /></Tab>
             <Tab title="Upload archive"><UploadMod refetchInstalledMods={fetchInstalledMods}/></Tab>
+            <Tab title="Restore backup"><div className="p-5"><BackupRestore kind="mods" disabled={disabled} activeProfile={activeProfile} onComplete={fetchInstalledMods}/></div></Tab>
             <Tab title="Import from save"><LoadMods refreshMods={fetchInstalledMods}/></Tab>
         </TabControl>}
 
