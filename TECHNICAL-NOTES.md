@@ -99,6 +99,16 @@ This design provides Vanilla, Space Age and large-modpack switching without extr
 
 The one-runtime boundary is per manager process, not per Docker host. Independent containers can run concurrently when every container has unique published TCP/UDP ports and completely separate manager and game-data mounts. The package-global server state, WebSocket status, RCON connection, profile locks and release operations make multiple Factorio child processes inside one manager unsupported.
 
+### Portable profile and mod backups
+
+- The ZIP contract is independently versioned (`kind: factorio-server-control-profile-backup`, `format_version: 1`, root `backup.json`); the installed profile manifest stays on schema 1.
+- Profile payloads are namespaced as `profiles/<source-id>/{saves,mods,config,checkpoints}`. Metadata includes the exact engine version, release target, selected save, built-in mods and checkpoint policy. Canonical configuration filenames are mapped to the destination's configured settings/admin paths.
+- Export takes the exclusive profile gate and reads the active directories directly, so it cannot use a stale active snapshot. Import validates a private staging directory, assigns fresh IDs, writes inactive snapshots and commits the manifest only once all selected profiles are ready. Failure removes only newly allocated data. Existing active IDs, runtime state and manager configuration are never rewritten.
+- Archives accept only portable relative paths and supported payload files, reject symlinks, case-colliding entries and file/directory collisions, and bound entries, expanded bytes, JSON and mod settings. Multipart data is removed on success and failure. Unknown format versions are rejected without migration.
+- Profile server-settings authentication fields are scrubbed on export and import. Imports disable public/LAN listing and reuse destination-local network bindings and `config.ini`. No source host paths or manager secrets are included. Opaque saves and mod settings are not anonymized.
+- Mod-only restore accepts the historical flat Download all layout (nested mod ZIPs plus `mod-list.json`/`mod-settings.dat`). It validates the set before the existing mount-safe directory-entry transaction and checks the expected active profile under lifecycle locking. It never renames a mounted directory or installs a Factorio release.
+- Backup operations are administrator-only POST routes. Copy/export/restore requires a stopped runtime; there is no automatic game stop or start. Profiles and mod-only imports intentionally have separate previews and confirmation semantics.
+
 ### Profile-aware UI state
 
 `ProfileProvider` loads the profile manifest once for the authenticated layout and exposes the active profile to all routed pages. Profile creation, activation, version changes, mode changes, save operations and mod refreshes explicitly refresh that shared state. The provider is presentation state only: backend locks and profile manifests remain authoritative, and an unavailable profile response is shown as an error context instead of silently treating data as global.

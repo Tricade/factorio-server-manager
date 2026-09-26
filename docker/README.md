@@ -95,6 +95,10 @@ Game-server autostart is configured inside **Server settings**. To run multiple 
 
 ## Migrate a legacy installation
 
+For a portable transfer between managers that support it, use [Profiles → Export profiles / Import backup](../README.md#profile-and-mod-backups). Imports add inactive profiles with new IDs; they do not replace manager accounts or the current profile. The existing `FSM_MAX_UPLOAD` setting controls incoming backup size (512 MiB by default). Ensure sufficient temporary/container disk space for ZIP staging, and review credentials and public/LAN listing before starting an imported profile. Older **Download all** mod ZIPs can be restored from **Mods → Restore backup**.
+
+For a full offline migration, including manager accounts and global configuration, continue with the volume-copy procedure below.
+
 The new public name does not rename compatibility-sensitive storage. The repository/image/executable namespace and default Unraid root deliberately remain `factorio-server-manager`; original Factorio Server Manager database/config filenames, `/opt/fsm-data`, `/opt/factorio` and `FSM_*` variables also remain stable. A stopped original deployment can therefore be migrated by copying its existing manager and Factorio data into the supported mappings; no branding-only rename or data conversion is required.
 
 The Unraid template's split layout maps the retained technical root as follows:
