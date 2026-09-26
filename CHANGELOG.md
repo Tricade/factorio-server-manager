@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Export selected or all profiles to a versioned backup ZIP, including exact Factorio versions, game modes, mods, startup settings and server settings, with optional saves and checkpoint files.
+- Preview and import profile backups as new inactive profiles with fresh IDs and editable names. Existing profiles, active runtime, storage layout and manager-wide settings remain unchanged.
+- Restore ZIPs made by Mods → Download all, with a preview and confirmation before replacing the active profile's mods and settings while Factorio is stopped.
+
+### Security
+- Profile exports exclude manager accounts, portal/RCON credentials, host-specific engine configuration and server-settings authentication fields. Imported profiles have public/LAN listing disabled until reviewed. Archive imports enforce portable paths, file/size limits, private staging and rollback.
+
 ### Changed
 - Formatted the Unraid Community Applications change history as readable version sections and bullet lists.
 

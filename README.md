@@ -31,6 +31,7 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 - Automatic, idempotent migration of an existing installation into `Current setup`.
 - Profile cloning, clean-profile creation, rename, activation and deletion.
 - Transactional profile switching with staging, validation and rollback; switching never starts Factorio implicitly.
+- Portable profile backups with an import preview, conflict-safe names and optional saves/checkpoints. Imports create new inactive profiles without modifying the existing installation.
 
 ### Saves, worlds and checkpoints
 
@@ -62,6 +63,7 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 - Recursive required-dependency resolution plus opt-in optional/recommended dependencies.
 - Profile-scoped startup-setting controls evaluated by the active profile's exact Factorio engine, including localized labels, constraints, defaults and safe reset actions.
 - Reusable mod packs and engine-verified import from an existing save, including worlds created on an older Factorio release and later upgraded to Space Age or a different mod set.
+- Restore existing **Download all** mod ZIPs, including enabled/disabled states and `mod-settings.dat`.
 
 ### Modern interface and deployment
 
@@ -75,6 +77,10 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 The implementation details and deliberate boundaries are documented in [TECHNICAL-NOTES.md](TECHNICAL-NOTES.md). User-visible changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
+
+### Profile backup and migration
+
+![Factorio Server Control profile backup preview](screenshots/Screenshot_Profile_Backup.png)
 
 ### Operational overview
 
@@ -176,6 +182,20 @@ On a fresh persistent manager-data volume, the manager creates a one-time admini
 ### Profiles
 
 The first profile-capable start copies an existing unprofiled setup into `Current setup`. Creating or activating another profile requires Factorio to be fully stopped. Activation snapshots the current setup, stages and validates the target, restores its exact game version and leaves the game stopped until **Start** is pressed.
+
+### Profile and mod backups
+
+Save and stop Factorio, then open **Profiles → Export profiles**. Select one, several or all profiles. Versions, modes, installed mod ZIPs, enabled states, `mod-settings.dat`, server settings and checkpoint schedules are included; save ZIPs and checkpoint files are optional. The active profile is exported from its current live files.
+
+On the destination manager, choose **Profiles → Import backup**, select the ZIP and preview it. Choose profiles and names, then import. Each receives a fresh ID and remains inactive. Existing profiles, the active game version and global autostart are unchanged. Activate an imported profile separately; the existing version-switch mechanism installs its recorded exact official Factorio version if necessary. Importing itself does not download or start Factorio.
+
+Server-settings passwords, usernames and tokens are removed. Manager users, sessions, portal/RCON credentials, host paths, engine files and reusable global mod packs are not exported. Imported profiles use the destination's bind address/port and have public/LAN listing disabled. Review credentials and visibility before starting them. Saves, player lists and opaque mod settings can still contain player names or custom mod data: **treat backup ZIPs as private**, not as shareable public archives.
+
+For older mod-only backups, use **Mods → Restore backup** with a ZIP made by **Download all**. The preview shows versions and enabled states. Confirmation replaces the active profile's mods and mod settings, including built-in DLC selections; saves and the installed engine version remain unchanged. Download the current mods first if you need to undo this. Missing configuration in older archives is handled with base Factorio and the archived community mods enabled; review the preview before restoring.
+
+Backup format 1 supports zipped mods, up to 256 profiles, 30,000 archive entries and 16 GiB total expanded outer-archive contents. Unpacked mod folders and unrelated files are not imported. The existing `FSM_MAX_UPLOAD` limit also applies (512 MiB by default, including multipart overhead; the backup endpoint caps it at 16 GiB). Export fewer profiles or omit saves/checkpoints if needed. Both hosts need temporary disk space for staging; an export can temporarily require approximately twice the selected data size. ZIPs with invalid paths, duplicates, incomplete saves or missing enabled mods are rejected before activation.
+
+These portable backups supplement full offline backups of `/opt/fsm-data` and the configured Factorio volumes. They do not replace them: full backups also preserve manager accounts, global settings and mod packs. Existing profile manifests and directory layouts stay at their current schema; no migration is required to install this feature.
 
 ### New worlds
 

@@ -18,6 +18,8 @@ import Alert from "../components/Alert";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
 import {useProfiles} from "../context/ProfileContext";
+import ProfileBackupExport from "../components/ProfileBackupExport";
+import BackupRestore from "../components/BackupRestore";
 
 const sourceOptions = [
     {value: "empty", name: "New world (no save)"},
@@ -146,9 +148,12 @@ const Profiles = ({serverStatus, refreshServerStatus, canManage = false}) => {
         <PageHeader
             title="Profiles"
             help="Profiles keep saves, versions, modes, mods and settings separate. Activating one snapshots the current setup and leaves Factorio stopped."
-            actions={canManage ? <Button onClick={openCreate} isDisabled={profileUIBusy}>
+            actions={canManage ? <>
+                <ProfileBackupExport profiles={state?.profiles || []} disabled={profileUIBusy || Boolean(activating)}/>
+                <BackupRestore disabled={profileUIBusy || Boolean(activating)} onComplete={applyProfileState}/>
+                <Button onClick={openCreate} isDisabled={profileUIBusy}>
                 <FontAwesomeIcon icon={faPlus}/> New profile
-            </Button> : null}
+            </Button></> : null}
         />
 
         {locked && <Alert type={canManage ? "warning" : "info"} className="mb-5">

@@ -44,7 +44,7 @@ func ProfileDataMiddleware(next http.Handler) http.Handler {
 		modPackLoadOwnsLock := strings.HasPrefix(path, "/api/mods/packs/") && strings.HasSuffix(path, "/load")
 		saveModImportOwnsLock := path == "/api/saves/mods/import"
 		modStartupSettingsOwnsLock := path == "/api/mods/startup-settings"
-		if strings.HasPrefix(path, "/api/profiles") || path == "/api/server/start" || modPackLoadOwnsLock || saveModImportOwnsLock || modStartupSettingsOwnsLock {
+		if strings.HasPrefix(path, "/api/profiles") || path == "/api/mods/backup/restore" || path == "/api/server/start" || modPackLoadOwnsLock || saveModImportOwnsLock || modStartupSettingsOwnsLock {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -243,6 +243,11 @@ func routeRequiresAdministrator(route Route) bool {
 // Defines all API REST endpoints
 // All routes are prefixed with /api
 var apiRoutes = Routes{
+	{"ExportProfileBackup", "POST", "/profiles/export", ExportProfileBackupHandler, true},
+	{"PreviewProfileBackup", "POST", "/profiles/import/preview", PreviewProfileBackupHandler, true},
+	{"ImportProfileBackup", "POST", "/profiles/import", ImportProfileBackupHandler, true},
+	{"PreviewModBackup", "POST", "/mods/backup/preview", PreviewModBackupHandler, true},
+	{"RestoreModBackup", "POST", "/mods/backup/restore", RestoreModBackupHandler, true},
 	{
 		"ListProfiles",
 		"GET",
