@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Tricade/factorio-server-manager/issues</Support>
   <Project>https://github.com/Tricade/factorio-server-manager</Project>
-  <Overview>A maintained modern fork of the original Factorio Server Manager (OpenFactorioServerManager). Operate one Factorio dedicated server through a responsive web interface with independent profiles, saves, fixed checkpoints, compatible mods and dependencies, profile-scoped mod startup settings, stable/experimental/exact game versions, base Factorio or Space Age, world creation, resource-aware factory-map snapshots with named platform detail, logs, users and safe server controls.</Overview>
+  <Overview>A maintained modern fork of the original Factorio Server Manager (OpenFactorioServerManager). Operate one Factorio dedicated server through a responsive web interface with independent profiles, portable profile backups and mod restore, saves, fixed checkpoints, compatible mods and dependencies, profile-scoped mod startup settings, stable/experimental/exact game versions, base Factorio or Space Age, world creation, resource-aware factory-map snapshots with named platform detail, logs, users and safe server controls.</Overview>
   <Description>Factorio Server Control operates one persistent Factorio headless server through an authenticated web UI. It keeps manager state, saves, mods and configuration in explicit appdata mappings; supports independent stopped profiles; lets administrators configure installed mods through engine-validated startup settings; and restores the recorded exact Factorio version across container recreation. Factory-map generation can run automatically, only while no player is online, manually, without space platforms or remain fully disabled. For original-manager migration compatibility, its technical appdata root remains factorio-server-manager and its /opt/fsm-data plus /opt/factorio paths remain stable; the public product rename does not require a storage rename. Development is generative-AI-assisted and maintainer-reviewed; the deployed manager contains no AI model and sends no runtime data to AI services.</Description>
   <Category>GameServers: Network:Management</Category>
   <ExtraSearchTerms>factorio dedicated server manager mods saves space age ofsm tricade</ExtraSearchTerms>
@@ -18,11 +18,17 @@
   <ReadMe>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/README.md</ReadMe>
   <Icon>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped --stop-timeout=180</ExtraParams>
-  <Date>2026-09-09</Date>
+  <Date>2026-09-26</Date>
   <DonateText>Support Factorio Server Control</DonateText>
   <DonateLink>https://ko-fi.com/tricade</DonateLink>
   <Requires>Persistent manager-data, saves, mods and config paths are required. Internet access to Factorio's official services is required for game-version installation and requested Mod Portal operations; the manager has no built-in telemetry. Keep its HTTP Web UI on a trusted LAN/VPN or behind an HTTPS reverse proxy. Split-mount recreation needs download access to restore the recorded exact game version. The image supports linux/amd64.</Requires>
   <Changes><![CDATA[
+### 0.19.0 (2026-09-26)
+- Export selected or all profiles with optional saves and checkpoints; preview imports as new inactive profiles without replacing existing data.
+- Restore Download all mod ZIPs with preview and confirmation, including enabled states and startup settings.
+- Credentials are excluded from profile backups; existing storage paths, active game version and autostart are preserved without migration.
+- Refreshed dependencies, backup documentation and screenshots; corrected release checks for this formatted changelog.
+
 ### 0.18.1 (2026-09-09)
 - Updated Sass, SVGO and js-yaml build dependencies, including upstream SVG script-filtering and YAML merge-budget security fixes.
 - No UI, profile, game-version, mod or storage migration changes.
@@ -43,6 +49,7 @@
 - Fixed Token mismatch during authenticated save-mod imports by using the manager's stored Mod Portal service credential in isolated sync, without exposing it in process arguments.
 ]]></Changes>
   <License>MIT</License>
+  <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Profile_Backup.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Map_Lightbox.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Map_Settings.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/screenshots/Screenshot_Profiles.png</Screenshot>
@@ -57,7 +64,7 @@
   <Config Name="Mods (required)" Target="/opt/factorio/mods" Default="/mnt/user/appdata/factorio-server-manager/mods" Mode="rw" Description="Persistent downloaded mods, built-in game-mode selection and mod-list.json." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Config (required)" Target="/opt/factorio/config" Default="/mnt/user/appdata/factorio-server-manager/config" Mode="rw" Description="Persistent Factorio server and map configuration." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Initial Factorio Version" Target="FACTORIO_VERSION" Default="latest" Mode="" Description="Used only for the first installation: latest, stable or an exact version such as 2.1.14. Later UI choices are persisted across container updates." Type="Variable" Display="always" Required="true" Mask="false"/>
-  <Config Name="Maximum Upload Size" Target="FSM_MAX_UPLOAD" Default="512" Mode="" Description="Maximum size in MiB for one uploaded save, mod or mod pack." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Maximum Upload Size" Target="FSM_MAX_UPLOAD" Default="512" Mode="" Description="Maximum size in MiB for one uploaded save, mod, mod pack or profile backup. Export fewer profiles or omit saves/checkpoints when a backup exceeds this limit." Type="Variable" Display="advanced" Required="true" Mask="false"/>
   <Config Name="Secure Session Cookie" Target="FSM_COOKIE_SECURE" Default="false" Mode="" Description="Use false for Unraid's direct HTTP Web UI. Set true only when the manager is always opened through an HTTPS reverse proxy." Type="Variable" Display="advanced" Required="true" Mask="false"/>
   <Config Name="RCON Password" Target="RCON_PASS" Default="" Mode="" Description="Optional internal Factorio RCON password. Leave empty to generate and persist a random password automatically." Type="Variable" Display="advanced" Required="false" Mask="true"/>
 </Container>

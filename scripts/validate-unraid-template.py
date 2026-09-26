@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Validate the repository's Unraid Community Applications metadata."""
 
+import argparse
+from datetime import date
 from pathlib import Path
+import re
 import struct
 import sys
 import xml.etree.ElementTree as ET
@@ -44,7 +47,30 @@ def assert_local_raw_asset(url: str) -> Path:
     return path
 
 
+def validate_release(template: ET.Element, version: str) -> None:
+    assert re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version), (
+        "release version must be strict three-part SemVer without a v prefix"
+    )
+    release_date = required_text(template, "Date")
+    try:
+        parsed_date = date.fromisoformat(release_date)
+    except ValueError as error:
+        raise AssertionError("<Date> must be a valid YYYY-MM-DD release date") from error
+    assert parsed_date.isoformat() == release_date, "<Date> must use YYYY-MM-DD"
+    changes = required_text(template, "Changes")
+    expected_heading = f"### {version} ({release_date})"
+    assert changes.splitlines()[0].strip() == expected_heading, (
+        f"<Changes> must start with {expected_heading}"
+    )
+    current_entry = changes.split("\n### ", 1)[0]
+    assert re.search(r"(?m)^- \S", current_entry), "release entry must contain a change list"
+    assert "(planned)" not in current_entry.lower(), "release entry must not be marked planned"
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--release", help="also require finalized Unraid metadata for this version")
+    args = parser.parse_args()
     profile = parse(PROFILE_PATH)
     assert profile.tag == "CommunityApplications", "ca_profile.xml has the wrong root element"
     profile_text = required_text(profile, "Profile")
@@ -61,6 +87,8 @@ def main() -> int:
     template = parse(TEMPLATE_PATH)
     assert template.tag == "Container", "template has the wrong root element"
     assert template.attrib.get("version") == "2", "template must use Container version 2"
+    if args.release:
+        validate_release(template, args.release)
 
     for tag in (
         "Name",

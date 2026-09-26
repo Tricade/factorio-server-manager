@@ -2,12 +2,13 @@
 
 Factorio Server Control releases are user-facing changes, not generated commit lists. Prepare the notes while the release change is still reviewable, and describe observable behavior, upgrade impact and recovery steps in plain language.
 
-The prepared source for the next release is `RELEASE-NOTES-0.18.1.md`. Keep the file publish-ready; the workflow treats draft markers, missing sections and mismatched versions as release blockers.
+The prepared source for the next release is `RELEASE-NOTES-0.19.0.md`. Keep the file publish-ready; the workflow treats draft markers, missing sections and mismatched versions as release blockers.
 
 ## Release checklist
 
 1. Move the shipped entries from `CHANGELOG.md`'s **Unreleased** section into a dated SemVer section. Keep empty headings out of the changelog.
 2. Set the same strict three-part version (without a `v` prefix) in `package.json`, `package-lock.json`, the versioned `RELEASE-NOTES-VERSION.md` file, the Unraid changes text and the Git tag. Remove `(planned)` from the Unraid entry, update its date and refresh screenshots whenever visible UI or branding changed.
+   Validate the parsed Unraid Markdown/CDATA release entry with `python3 scripts/validate-unraid-template.py --release VERSION`; its first heading must match both the version and `<Date>`.
 3. Review the pinned GitHub Action commits, Go toolchain patch version and Docker base-image digests against their trusted upstream versions. Run the verification baseline in `TECHNICAL-NOTES.md`, including `govulncheck`, the Unraid validator, both local release builders where available and the production-container persistence tests.
 4. Merge the signed-off release commit to `main`, create the SemVer tag on that exact commit and push the tag without force. Configure repository rules to prevent release-tag updates or deletion; the workflow also compares the remote tag object before every publication phase.
 5. From the `main` branch, manually dispatch **Publish verified release** with the existing tag. Do not create or publish a GitHub release beforehand. The workflow checks the tag, versioned notes, finalized changelog and unused release/image targets; then it runs tests, creates and verifies both checksummed archives, and pushes and verifies only the immutable SemVer image.

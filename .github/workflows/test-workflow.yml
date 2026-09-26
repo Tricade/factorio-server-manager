@@ -59,7 +59,9 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Validate Community Applications metadata
-        run: python3 scripts/validate-unraid-template.py
+        run: |
+          python3 -m unittest discover -s scripts/tests -v
+          python3 scripts/validate-unraid-template.py
   docker-build:
     needs: [test-npm, test-go, test-unraid-template]
     runs-on: ubuntu-latest

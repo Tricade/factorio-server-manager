@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-26
+
 ### Added
 - Export selected or all profiles to a versioned backup ZIP, including exact Factorio versions, game modes, mods, startup settings and server settings, with optional saves and checkpoint files.
 - Preview and import profile backups as new inactive profiles with fresh IDs and editable names. Existing profiles, active runtime, storage layout and manager-wide settings remain unchanged.
@@ -15,6 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - Formatted the Unraid Community Applications change history as readable version sections and bullet lists.
+- Refreshed profile screenshots, backup/migration documentation and Community Applications metadata.
+- Included the reviewed frontend dependency updates (Autoprefixer, React Router, React Hook Form, Sass and Webpack), Go module updates (`x/crypto`, `x/sys`, `x/text`), and pinned Node/Ubuntu container and Docker Action updates merged since 0.18.1.
+
+### Fixed
+- Release and recovery preflight checks now parse the Unraid XML/CDATA changelog and verify its leading version, date and finalized bullet list, instead of requiring the obsolete single-line format.
 
 ## [0.18.1] - 2026-09-09
 
