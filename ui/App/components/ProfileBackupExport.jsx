@@ -5,6 +5,8 @@ import backups from "../../api/resources/backups";
 import Button from "./Button";
 import Modal from "./Modal";
 import Alert from "./Alert";
+import useBackupLimits from "./useBackupLimits";
+import {formatBackupSize} from "../../api/resources/backupUpload.cjs";
 
 const ProfileBackupExport = ({profiles, disabled}) => {
     const [open, setOpen] = useState(false);
@@ -13,6 +15,7 @@ const ProfileBackupExport = ({profiles, disabled}) => {
     const [checkpoints, setCheckpoints] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
+    const {limits} = useBackupLimits(open);
     const download = async () => {
         setBusy(true); setError("");
         try {
@@ -41,7 +44,9 @@ const ProfileBackupExport = ({profiles, disabled}) => {
                     <label className="ui-checkbox pt-3 border-t border-gray-dark"><input type="checkbox" checked={saves} onChange={event => setSaves(event.target.checked)}/> Include saves</label>
                     <label className="ui-checkbox"><input type="checkbox" checked={checkpoints} onChange={event => setCheckpoints(event.target.checked)}/> Include checkpoint files</label>
                 </fieldset>
-                <p className="text-sm text-gray-light">Checkpoint schedules are always included. Large backups need enough temporary disk space and an adequate FSM_MAX_UPLOAD limit on the destination.</p>
+                <p className="text-sm text-gray-light">Checkpoint schedules are always included.</p>
+                <Alert type="info">{limits ? `This manager's import limit is ${formatBackupSize(limits.max_upload_bytes)} per upload, including metadata. ` : "Check the destination manager's upload limit before transferring a large backup. "}
+                    If a combined backup exceeds the destination's limit, export one profile at a time instead of all profiles. If one profile is still too large, omit saves/checkpoints or increase FSM_MAX_UPLOAD on the destination. Keep enough temporary disk space available.</Alert>
             </div>}
             actions={<><Button type="ghost" isDisabled={busy} onClick={() => setOpen(false)}>Cancel</Button><Button isDisabled={disabled || !ids.length} isLoading={busy} onClick={download}>Download backup</Button></>}/>
     </>;

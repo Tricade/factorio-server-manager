@@ -1,14 +1,10 @@
 import client from "../client";
+import {createBackupUploader} from "./backupUpload.cjs";
 
-const upload = async (path, file, extra = {}) => {
-    const form = new FormData();
-    form.append("backup", file);
-    Object.entries(extra).forEach(([key, value]) => form.append(key, value));
-    const response = await client.post(path, form, {headers: {"Content-Type": "multipart/form-data"}});
-    return response.data;
-};
+const {getLimits, upload} = createBackupUploader(client);
 
 export default {
+    limits: getLimits,
     exportProfiles: async options => {
         const response = await client.post("/api/profiles/export", options, {responseType: "blob"});
         const url = URL.createObjectURL(response.data);

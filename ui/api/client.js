@@ -12,7 +12,9 @@ const client = Axios.create({
 client.interceptors.response.use(res => res, err => {
     const status = err.response?.status;
     if (!err.response) {
-        window.flash("The control service is not reachable. Check the connection.", "red");
+        const message = err.config?.networkErrorMessage || "The control service is not reachable. Check the connection.";
+        err.userMessage = message;
+        window.flash(message, "red");
     } else if (status === 401) {
         window.dispatchEvent(new Event(authenticationRequiredEvent));
     } else if(status === 502) {

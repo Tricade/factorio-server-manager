@@ -6,6 +6,8 @@ import Button from "./Button";
 import Modal from "./Modal";
 import Alert from "./Alert";
 import {importSelection, validImportSelection} from "./backupSelection.cjs";
+import {backupFileError, backupErrorMessage, formatBackupSize} from "../../api/resources/backupUpload.cjs";
+import useBackupLimits from "./useBackupLimits";
 
 const BackupRestore = ({kind = "profiles", disabled, activeProfile, onComplete}) => {
     const [open, setOpen] = useState(false);
@@ -16,9 +18,13 @@ const BackupRestore = ({kind = "profiles", disabled, activeProfile, onComplete})
     const [confirmed, setConfirmed] = useState(false);
     const [error, setError] = useState("");
     const [targetID, setTargetID] = useState(null);
+    const {limits, setLimits, loading: limitsLoading, failed: limitsFailed, retry: retryLimits} = useBackupLimits(open);
     const profiles = kind === "profiles";
     const reset = () => { setFile(null); setPreview(null); setSelection([]); setConfirmed(false); setError(""); setTargetID(activeProfile?.id); };
-    const showError = error => setError(typeof error?.response?.data === "string" ? error.response.data : "The backup could not be processed. Try again.");
+    const showError = error => {
+        if (error?.backupLimits) setLimits(error.backupLimits);
+        setError(backupErrorMessage(error));
+    };
     const inspect = async () => {
         setBusy(true); setError(""); setPreview(null); setConfirmed(false);
         try {
@@ -39,6 +45,8 @@ const BackupRestore = ({kind = "profiles", disabled, activeProfile, onComplete})
         } catch (error) { showError(error); } finally { setBusy(false); }
     };
     const targetChanged = !profiles && targetID !== activeProfile?.id;
+    const fileError = file && limits ? backupFileError(file, limits, kind) : "";
+    const uploadBlocked = !file || !limits || limitsLoading || limitsFailed || !!fileError;
     return <>
         <Button type="secondary" isDisabled={disabled} onClick={() => { reset(); setOpen(true); }}>
             <FontAwesomeIcon icon={faUpload}/> {profiles ? "Import backup" : "Restore mod backup"}
@@ -52,8 +60,11 @@ const BackupRestore = ({kind = "profiles", disabled, activeProfile, onComplete})
                     <input id={`backup-file-${kind}`} className="absolute inset-0 opacity-0 cursor-pointer" type="file" accept=".zip" disabled={busy || disabled}
                         onChange={event => { setFile(event.target.files?.[0] || null); setPreview(null); setConfirmed(false); setError(""); }}/>
                 </label>
+                {limits && <p className="text-sm text-gray-light">Upload limit: {formatBackupSize(limits.max_upload_bytes)} including upload metadata{file && ` · Selected: ${formatBackupSize(file.size)}`}</p>}
+                {limitsLoading && <p role="status" className="text-sm text-gray-light">Checking upload limit…</p>}
+                {limitsFailed && <Alert type="warning">Could not check the upload limit. <Button type="ghost" size="sm" onClick={retryLimits}>Retry size check</Button></Alert>}
                 {!profiles && <p className="text-sm text-gray-light">Choose a ZIP created by Mods → Download all. Single mods use Upload archive.</p>}
-                {error && <Alert type="danger">{error}</Alert>}
+                {(fileError || error) && <Alert type="danger">{fileError || error}</Alert>}
                 {(disabled || targetChanged) && <Alert type="warning">Restore is locked. Stop Factorio and reopen this dialog for the active profile.</Alert>}
                 {preview && profiles && <>
                     <Alert type="info">New inactive profiles only. Existing profiles, game version and autostart stay unchanged. Passwords and account credentials are not transferred; imported servers start with public and LAN listing off.</Alert>
@@ -81,8 +92,8 @@ const BackupRestore = ({kind = "profiles", disabled, activeProfile, onComplete})
             </div>}
             actions={<>
                 <Button type="ghost" isDisabled={busy} onClick={() => setOpen(false)}>Cancel</Button>
-                {!preview ? <Button isDisabled={!file || disabled} isLoading={busy} onClick={inspect}>Preview backup</Button>
-                    : <Button isDisabled={disabled || targetChanged || (profiles ? !validImportSelection(selection) : !confirmed)} isLoading={busy} onClick={restore}>
+                {!preview ? <Button isDisabled={uploadBlocked || disabled} isLoading={busy} onClick={inspect}>Preview backup</Button>
+                    : <Button isDisabled={uploadBlocked || disabled || targetChanged || (profiles ? !validImportSelection(selection) : !confirmed)} isLoading={busy} onClick={restore}>
                         {profiles ? "Import selected profiles" : "Restore mods"}
                     </Button>}
             </>}/>
