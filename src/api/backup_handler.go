@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -12,6 +13,36 @@ import (
 	"github.com/OpenFactorioServerManager/factorio-server-manager/bootstrap"
 	"github.com/OpenFactorioServerManager/factorio-server-manager/factorio"
 )
+
+const backupMultipartReserve = maxProfileRequestSize + (4 << 10)
+
+type backupUploadLimits struct {
+	MaxUploadBytes int64 `json:"max_upload_bytes"`
+	MaxFileBytes   int64 `json:"max_file_bytes"`
+}
+
+func effectiveBackupUploadLimits(configured int64) backupUploadLimits {
+	limit := configured
+	if limit <= 0 {
+		limit = 512 << 20
+	}
+	if limit > 16<<30 {
+		limit = 16 << 30
+	}
+	// The existing request cap includes the multipart body. Reserve room for
+	// the largest import selection plus headers so preview and import both fit.
+	return backupUploadLimits{MaxUploadBytes: limit, MaxFileBytes: max(0, limit-backupMultipartReserve)}
+}
+
+func BackupUploadLimitsHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(effectiveBackupUploadLimits(bootstrap.GetConfig().MaxUploadSize))
+}
+
+func backupUploadTooLarge(w http.ResponseWriter, limit int64) {
+	http.Error(w, fmt.Sprintf("Backup exceeds the upload limit of %g MiB (including upload metadata). Export profiles separately or omit saves/checkpoints. For one oversized profile or mod backup, increase FSM_MAX_UPLOAD on the destination; the backup request cap is 16 GiB.", float64(limit)/(1<<20)), http.StatusRequestEntityTooLarge)
+}
 
 func writeBackupError(w http.ResponseWriter, err error) {
 	status, message := http.StatusInternalServerError, "Backup operation failed. No existing profile was overwritten. Check the manager logs."
@@ -59,19 +90,17 @@ func backupUpload(w http.ResponseWriter, r *http.Request) (multipart.File, int64
 			r.MultipartForm.RemoveAll()
 		}
 	}
-	limit := bootstrap.GetConfig().MaxUploadSize
-	if limit <= 0 {
-		limit = 512 << 20
-	}
-	if limit > 16<<30 {
-		limit = 16 << 30
+	limit := effectiveBackupUploadLimits(bootstrap.GetConfig().MaxUploadSize).MaxUploadBytes
+	if r.ContentLength > limit {
+		backupUploadTooLarge(w, limit)
+		return nil, 0, func() {}, false
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		cleanup()
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			http.Error(w, "Backup exceeds FSM_MAX_UPLOAD. Increase the upload limit or export fewer profiles without saves/checkpoints.", http.StatusRequestEntityTooLarge)
+			backupUploadTooLarge(w, limit)
 		} else {
 			http.Error(w, "Invalid backup upload.", http.StatusBadRequest)
 		}

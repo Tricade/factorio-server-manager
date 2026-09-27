@@ -230,7 +230,7 @@ var nonAdminMutationRoutes = map[string]bool{
 // are self-service session/password actions. User enumeration is also
 // administrator-only even though it is read-only.
 func routeRequiresAdministrator(route Route) bool {
-	if route.Name == "ListUsers" || route.Name == "GetModStartupSettings" {
+	if route.Name == "ListUsers" || route.Name == "GetModStartupSettings" || route.Name == "BackupUploadLimits" {
 		return true
 	}
 	method := strings.ToUpper(route.Method)
@@ -243,6 +243,7 @@ func routeRequiresAdministrator(route Route) bool {
 // Defines all API REST endpoints
 // All routes are prefixed with /api
 var apiRoutes = Routes{
+	{"BackupUploadLimits", "GET", "/backups/limits", BackupUploadLimitsHandler, false},
 	{"ExportProfileBackup", "POST", "/profiles/export", ExportProfileBackupHandler, true},
 	{"PreviewProfileBackup", "POST", "/profiles/import/preview", PreviewProfileBackupHandler, true},
 	{"ImportProfileBackup", "POST", "/profiles/import", ImportProfileBackupHandler, true},
