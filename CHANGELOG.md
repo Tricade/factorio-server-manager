@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-09-27
+
 ### Fixed
 - Check profile and mod backup sizes against the destination's actual upload limit before preview and import, with room reserved for multipart metadata. Oversized backups no longer start an upload that misleadingly reports the control service as unreachable.
 - Show the effective upload limit and guidance to export large profile collections individually or in smaller groups. A single oversized profile still needs fewer optional contents or a larger `FSM_MAX_UPLOAD`; existing limits and installations are unchanged.
