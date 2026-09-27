@@ -195,6 +195,10 @@ For older mod-only backups, use **Mods → Restore backup** with a ZIP made by *
 
 Backup format 1 supports zipped mods, up to 256 profiles, 30,000 archive entries and 16 GiB total expanded outer-archive contents. Unpacked mod folders and unrelated files are not imported. The existing `FSM_MAX_UPLOAD` limit also applies (512 MiB by default, including multipart overhead; the backup endpoint caps it at 16 GiB). Export fewer profiles or omit saves/checkpoints if needed. Both hosts need temporary disk space for staging; an export can temporarily require approximately twice the selected data size. ZIPs with invalid paths, duplicates, incomplete saves or missing enabled mods are rejected before activation.
 
+The import dialog shows the destination's effective upload limit and rejects oversized files **before uploading**, for both profile and mod backups. It reserves 68 KiB for multipart headers and profile selection, and rechecks the limit before preview and final import. If the limit cannot be checked, retry the size check before continuing. A reverse proxy can impose a lower limit independently.
+
+**Large collections:** when a combined ZIP would exceed the destination's upload limit (512 MiB by default), export individual profiles or smaller groups instead of one all-profiles backup. Splitting by profile does not help if a single profile is already too large: omit saves/checkpoints if they are not needed, or increase `FSM_MAX_UPLOAD` on the destination (for example `2048` allows a 2 GiB request) and recreate the container to apply the setting. The 16 GiB request/expanded-content caps still apply; raising the upload limit does not provide extra temporary disk space. A large mod-only backup likewise needs a suitable destination limit. Keep your full offline backup as well.
+
 These portable backups supplement full offline backups of `/opt/fsm-data` and the configured Factorio volumes. They do not replace them: full backups also preserve manager accounts, global settings and mod packs. Existing profile manifests and directory layouts stay at their current schema; no migration is required to install this feature.
 
 ### New worlds
