@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Security
+- Updated the transitive build dependency `fast-uri` from 3.1.7 to 3.1.8 to fix inconsistent host-name normalization for percent-encoded scheme-relative URLs (GHSA-hrr3-gc8f-f4qj). This dependency is not included in the production runtime; application behavior and storage formats are unchanged.
+
 ## [0.19.1] - 2026-09-27
 
 ### Fixed
