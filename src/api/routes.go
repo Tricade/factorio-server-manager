@@ -41,7 +41,7 @@ func ProfileDataMiddleware(next http.Handler) http.Handler {
 		path := strings.TrimSuffix(r.URL.Path, "/")
 		// Start owns the shared profile-data lock until the child process is
 		// launched. Taking it here as well could deadlock behind a queued writer.
-		modPackLoadOwnsLock := strings.HasPrefix(path, "/api/mods/packs/") && strings.HasSuffix(path, "/load")
+		modPackLoadOwnsLock := strings.HasPrefix(path, "/api/mods/packs/") && (strings.HasSuffix(path, "/load") || strings.HasSuffix(path, "/merge") || strings.HasSuffix(path, "/merge/preview"))
 		saveModImportOwnsLock := path == "/api/saves/mods/import"
 		modStartupSettingsOwnsLock := path == "/api/mods/startup-settings"
 		if strings.HasPrefix(path, "/api/profiles") || path == "/api/mods/backup/restore" || path == "/api/server/start" || modPackLoadOwnsLock || saveModImportOwnsLock || modStartupSettingsOwnsLock {
@@ -243,6 +243,10 @@ func routeRequiresAdministrator(route Route) bool {
 // Defines all API REST endpoints
 // All routes are prefixed with /api
 var apiRoutes = Routes{
+	{"PreviewModPackMerge", "POST", "/mods/packs/{modpack}/merge/preview", PreviewModPackMergeHandler, true},
+	{"MergeModPack", "POST", "/mods/packs/{modpack}/merge", MergeModPackHandler, true},
+	{"GetModPortalPreferences", "GET", "/mods/portal/preferences", GetModPortalPreferences, false},
+	{"UpdateModPortalPreferences", "PUT", "/mods/portal/preferences", UpdateModPortalPreferences, false},
 	{"BackupUploadLimits", "GET", "/backups/limits", BackupUploadLimitsHandler, false},
 	{"ExportProfileBackup", "POST", "/profiles/export", ExportProfileBackupHandler, true},
 	{"PreviewProfileBackup", "POST", "/profiles/import/preview", PreviewProfileBackupHandler, true},

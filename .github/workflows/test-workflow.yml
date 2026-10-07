@@ -49,6 +49,7 @@ jobs:
         run: |
           go version | grep -F 'go1.26.8 '
           go test ./... -short -count=1
+          go test ./factorio ./api -race -short -run 'Test(ModPackMerge|MergeModPack|ModPortalPreferences|ModPortalOptionalDefaults)' -count=1
           go vet ./...
           go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
       - if: contains(matrix.os, 'windows')
@@ -77,7 +78,7 @@ jobs:
             --env FSM_TEST_MOUNTED_MODS_DIR=/opt/factorio/mods \
             --workdir /workspace \
             golang:1.26.8-bookworm@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 \
-            go test ./factorio -run '^(TestDeleteAllModsAtMountedDestination|TestReplaceModsFromSaveAtMountedDestination|TestReplaceReleaseFilesAtMountedDestination|TestModStartupSettingsAtomicWriteAtMountedDestination|TestRestoreModBackupAtMountedDestination)$' -count=1 -v
+            go test ./factorio -run '^(TestDeleteAllModsAtMountedDestination|TestReplaceModsFromSaveAtMountedDestination|TestReplaceReleaseFilesAtMountedDestination|TestModStartupSettingsAtomicWriteAtMountedDestination|TestRestoreModBackupAtMountedDestination|TestMergeModPackAtMountedDestination)$' -count=1 -v
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - name: Build production container
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
