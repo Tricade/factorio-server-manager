@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Add saved mod packs to the active profile without replacing existing mods, enabled states, game mode or mod settings. Preview additions and dependency/version conflicts before applying; the existing full replacement action remains available as **Replace mods**.
+- Persist a manager-wide **Preselect optional and recommended dependencies** preference for new Mod Portal download reviews. It defaults to off, and selections remain editable before downloading.
+
+### Changed
+- Additive pack loading requires a stopped server, validates the combined mod set and rejects stale previews. Activation stages entries inside the existing mods filesystem and rolls back on failure, including on Docker bind mounts.
+
 ### Security
 - Updated the transitive build dependency `fast-uri` from 3.1.7 to 3.1.8 to fix inconsistent host-name normalization for percent-encoded scheme-relative URLs (GHSA-hrr3-gc8f-f4qj). This dependency is not included in the production runtime; application behavior and storage formats are unchanged.
 
