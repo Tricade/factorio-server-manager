@@ -77,7 +77,7 @@ const DependencyInstallForm = ({plan, isOpen, close, onToggleOptional, onInstall
                 {optional.length > 0 && <section>
                     <div className="mb-2 flex items-center justify-between gap-3">
                         <h3 className="font-bold text-white">Optional</h3>
-                        <span className="text-xs text-gray-light">Off by default</span>
+                        <span className="text-xs text-gray-light">{selectedCount} selected</span>
                     </div>
                     <div className="space-y-2">{optional.map(item => <OptionalDependency
                         key={item.name}

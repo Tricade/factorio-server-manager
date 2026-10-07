@@ -10,6 +10,7 @@ import Input from "../../../../../components/Input";
 import Error from "../../../../../components/Error";
 import SelectVersionForm from "./SelectVersionForm";
 import DependencyInstallForm from "./DependencyInstallForm";
+import modPackHelpers from "../../modPackMerge.cjs";
 
 const AddModForm = ({setIsFactorioAuthenticated, fuse, factorioVersion, refetchInstalledMods}) => {
     const {register, watch, setValue, handleSubmit, formState: {errors}} = useForm();
@@ -88,9 +89,9 @@ const AddModForm = ({setIsFactorioAuthenticated, fuse, factorioVersion, refetchI
     const reviewDependencies = async release => {
         setIsPlanningDependencies(true);
         try {
-            const plan = await modsResource.portal.planInstall(selectedMod.item.name, release.version, []);
+            const plan = await modsResource.portal.planInstall(selectedMod.item.name, release.version, [], true);
             setSelectedRelease(release);
-            setSelectedOptional([]);
+            setSelectedOptional(modPackHelpers.selectedOptionalNames(plan));
             setDependencyPlan(plan);
             setIsDependencyModalOpen(true);
             return true;

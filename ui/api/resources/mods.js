@@ -44,6 +44,8 @@ const mods = {
         }
     },
     portal: {
+        preferences: async () => (await client.get('/api/mods/portal/preferences')).data,
+        setPreferences: async preselectOptional => (await client.put('/api/mods/portal/preferences', {preselect_optional: preselectOptional})).data,
         login: async (username, password) => {
             const response = await client.post('/api/mods/portal/login', {
                 username,
@@ -71,8 +73,8 @@ const mods = {
             });
             return response.data
         },
-        planInstall: async (name, version, optional = []) => {
-            const response = await client.post('/api/mods/portal/install/plan', {name, version, optional});
+        planInstall: async (name, version, optional = [], useOptionalDefaults = false) => {
+            const response = await client.post('/api/mods/portal/install/plan', {name, version, optional, use_optional_defaults: useOptionalDefaults});
             return response.data;
         },
         installResolved: async (name, version, optional = []) => {
@@ -89,6 +91,8 @@ const mods = {
         }
     },
     packs: {
+        previewMerge: async name => (await client.post(`/api/mods/packs/${encodeURIComponent(name)}/merge/preview`)).data,
+        merge: async (name, revision) => (await client.post(`/api/mods/packs/${encodeURIComponent(name)}/merge`, {revision})).data,
         list: async () => {
             const response = await client.get('/api/mods/packs/list');
             return response.data;

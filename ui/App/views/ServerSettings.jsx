@@ -19,6 +19,7 @@ import Alert from "../components/Alert";
 import ScopeBadge from "../components/ScopeBadge";
 import {useProfiles} from "../context/ProfileContext";
 import mapSnapshotSettingsHelpers from "./mapSnapshotSettings.cjs";
+import ModPortalPreferences from "./ModPortalPreferences";
 
 const {mapSnapshotFormValues, mapSnapshotRequestValues} = mapSnapshotSettingsHelpers;
 
@@ -27,6 +28,7 @@ const humanize = key => key.replaceAll("_", " ").replace(/\b\w/g, letter => lett
 const ServerSettings = ({serverStatus, canManage = false}) => {
     const {activeProfile, applyProfileState} = useProfiles();
     const [settings, setSettings] = useState(null);
+    const [modPortalDirty, setModPortalDirty] = useState(false);
     const [saves, setSaves] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [settingsLoadError, setSettingsLoadError] = useState("");
@@ -250,7 +252,7 @@ const ServerSettings = ({serverStatus, canManage = false}) => {
         return <div className="ui-subcard p-4" key={name}>{control}</div>;
     };
 
-    const hasUnsavedChanges = isDirty || startupDirty || autostartDirty || mapSnapshotDirty;
+    const hasUnsavedChanges = isDirty || startupDirty || autostartDirty || mapSnapshotDirty || modPortalDirty;
     const autostartEnabled = Boolean(watchAutostart("enabled"));
     const mapSnapshotMode = watchMapSnapshot("mode") || "automatic";
     const mapSnapshotInterval = Number(watchMapSnapshot("automatic_interval_minutes") || 60);
@@ -279,10 +281,10 @@ const ServerSettings = ({serverStatus, canManage = false}) => {
         {locked && <Alert type={canManage ? "warning" : "info"} className="mb-5"><FontAwesomeIcon icon={faLock}/> {!canManage
             ? "Viewer access is read-only. Profile and manager-wide settings remain visible."
             : serverStatus?.known === false
-            ? "Profile startup and multiplayer settings are locked until the Factorio process status is confirmed. Manager-wide autostart and map scheduling remain configurable."
+            ? "Profile startup and multiplayer settings are locked until the Factorio process status is confirmed. Manager-wide preferences remain configurable."
             : serverStatus?.stopping
-                ? "Profile startup and multiplayer settings remain locked while Factorio is shutting down. Manager-wide autostart and map scheduling remain configurable."
-                : "Stop Factorio to edit profile startup, network and multiplayer settings. Manager-wide autostart and map scheduling remain configurable."}</Alert>}
+                ? "Profile startup and multiplayer settings remain locked while Factorio is shutting down. Manager-wide preferences remain configurable."
+                : "Stop Factorio to edit profile startup, network and multiplayer settings. Manager-wide preferences remain configurable."}</Alert>}
 
         <div className="ui-settings-overview-grid mb-5">
             <form id="startup-settings-form" onSubmit={handleStartupSubmit(saveStartup)}>
@@ -404,6 +406,8 @@ const ServerSettings = ({serverStatus, canManage = false}) => {
                 </Button> : null}
             />
         </form>
+
+        <ModPortalPreferences canManage={canManage} onDirtyChange={setModPortalDirty}/>
 
         <form id="server-settings-form" onSubmit={handleSubmit(saveServerSettings)}>
             <Panel

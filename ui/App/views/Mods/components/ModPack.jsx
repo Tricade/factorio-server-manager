@@ -6,6 +6,7 @@ import ModList from "./ModList";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import Button from "../../../components/Button";
 import ButtonLink from "../../../components/ButtonLink";
+import ModPackMergeDialog from "./ModPackMergeDialog";
 
 const ModPack = ({modPack, reloadModPacks, factorioVersion, reloadMods, profileLocked = false, readOnly = false}) => {
     const [dialog, setDialog] = useState(null);
@@ -37,7 +38,8 @@ const ModPack = ({modPack, reloadModPacks, factorioVersion, reloadMods, profileL
                 <ButtonLink size="sm" type="ghost" href={`/api/mods/packs/${encodeURIComponent(modPack.name)}/download`}>
                     <FontAwesomeIcon icon={faDownload}/> Download
                 </ButtonLink>
-                {!readOnly && <Button size="sm" type="secondary" isLoading={isLoading} isDisabled={profileLocked} title={profileLocked ? "Stop Factorio before replacing the active profile's mods" : undefined} onClick={() => setDialog("load")}><FontAwesomeIcon icon={faPlay}/> Load pack</Button>}
+                {!readOnly && <Button size="sm" type="secondary" isDisabled={profileLocked || isLoading} title={profileLocked ? "Stop Factorio before adding mods" : undefined} onClick={() => setDialog("merge")}>Add to profile</Button>}
+                {!readOnly && <Button size="sm" type="secondary" isLoading={isLoading} isDisabled={profileLocked} title={profileLocked ? "Stop Factorio before replacing the active profile's mods" : undefined} onClick={() => setDialog("load")}><FontAwesomeIcon icon={faPlay}/> Replace mods</Button>}
                 {!readOnly && <Button size="sm" type="danger" onClick={() => setDialog("delete")}><FontAwesomeIcon icon={faTrashAlt}/> Delete</Button>}
             </div>
         </div>
@@ -50,14 +52,15 @@ const ModPack = ({modPack, reloadModPacks, factorioVersion, reloadMods, profileL
             disabled={readOnly}
         /></div>
         {!readOnly && <ConfirmDialog
-            title={dialog === "delete" ? "Delete mod pack?" : "Load mod pack?"}
+            title={dialog === "delete" ? "Delete mod pack?" : "Replace profile mods?"}
             content={dialog === "delete"
                 ? `${modPack.name} will be removed. Installed mods are not changed.`
-                : `Loading ${modPack.name} replaces every currently installed mod.`}
-            isOpen={Boolean(dialog)}
+                : `Loading ${modPack.name} replaces the active profile's entire mod set and stored mod settings.`}
+            isOpen={dialog === "delete" || dialog === "load"}
             close={() => setDialog(null)}
             onSuccess={dialog === "delete" ? deleteModPack : loadModPack}
         />}
+        {!readOnly && <ModPackMergeDialog name={modPack.name} isOpen={dialog === "merge"} close={() => setDialog(null)} onSuccess={reloadMods} locked={profileLocked}/>}
     </div>;
 };
 
