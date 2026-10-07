@@ -208,7 +208,7 @@ const Mods = ({serverStatus, canManage = false}) => {
 
         <Panel
             title="Mod packs"
-            description="Manager-wide snapshots of mod combinations and their startup settings. Loading one replaces the installed mod set and stored mod settings of the active profile only."
+            help="Add to profile keeps existing mods and settings. Replace mods restores the pack's complete mod set and stored settings. Both require Factorio to be stopped."
             headerAction={<ScopeBadge scope="manager"/>}
             content={isLoading
                 ? <div className="ui-empty-state"><div><FontAwesomeIcon className="text-orange" icon={faPuzzlePiece} spin/><p className="mt-3">Reading mod packs…</p></div></div>
@@ -218,7 +218,7 @@ const Mods = ({serverStatus, canManage = false}) => {
                 ? <EmptyState icon={faPuzzlePiece} title="No mod packs"/>
                 : <div className="space-y-4">{modPacks.map(pack => <ModPack
                     factorioVersion={factorioVersion}
-                    key={pack.name}
+                    key={`${activeProfile?.id}:${pack.name}`}
                     modPack={pack}
                     reloadMods={fetchInstalledMods}
                     reloadModPacks={fetchModPacks}

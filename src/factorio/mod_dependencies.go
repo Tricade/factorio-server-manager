@@ -32,9 +32,10 @@ type ParsedModDependency struct {
 }
 
 type ModInstallPlanRequest struct {
-	Name     string   `json:"name"`
-	Version  Version  `json:"version"`
-	Optional []string `json:"optional"`
+	Name                string   `json:"name"`
+	Version             Version  `json:"version"`
+	Optional            []string `json:"optional"`
+	UseOptionalDefaults bool     `json:"use_optional_defaults,omitempty"`
 }
 
 type ModInstallPlanItem struct {
@@ -134,14 +135,49 @@ func ParseModDependency(raw string) (ParsedModDependency, error) {
 }
 
 func PlanModInstallation(request ModInstallPlanRequest) (ModInstallPlan, error) {
-	planner, err := newModDependencyPlanner(request)
+	return planModInstallation(request, newModDependencyPlanner)
+}
+
+func planModInstallation(request ModInstallPlanRequest, createPlanner func(ModInstallPlanRequest) (*modDependencyPlanner, error)) (ModInstallPlan, error) {
+	planner, err := createPlanner(request)
 	if err != nil {
 		return ModInstallPlan{}, err
 	}
-	return planner.build()
+	plan, err := planner.build()
+	if err != nil || !request.UseOptionalDefaults {
+		return plan, err
+	}
+	preferences, err := LoadModPortalPreferences()
+	if err != nil {
+		return plan, errors.New("unable to load mod portal preferences")
+	}
+	if !preferences.PreselectOptional {
+		return plan, nil
+	}
+	// Preselect the optional/recommended entries in the initial review, not
+	// every compatibility integration reachable through other optional mods.
+	// The next plan resolves their required dependencies as usual.
+	for _, item := range plan.Optional {
+		request.Optional = appendUniqueString(request.Optional, item.Name)
+	}
+	planner, err = createPlanner(request)
+	if err != nil {
+		return plan, err
+	}
+	selectedPlan, err := planner.build()
+	if err != nil {
+		// A broken optional extension must not hide the review for the root mod.
+		// Keep the explicit initial selection and let the user select individually.
+		plan.Warnings = append(plan.Warnings, "Optional defaults could not be resolved together. Review and select optional dependencies individually.")
+		return plan, nil
+	}
+	return selectedPlan, nil
 }
 
 func InstallModPlan(request ModInstallPlanRequest) (ModsResultList, ModInstallPlan, error) {
+	if request.UseOptionalDefaults {
+		return ModsResultList{}, ModInstallPlan{}, errors.New("review dependencies and submit explicit optional selections before installing")
+	}
 	planner, err := newModDependencyPlanner(request)
 	if err != nil {
 		return ModsResultList{}, ModInstallPlan{}, err
@@ -374,6 +410,9 @@ func (planner *modDependencyPlanner) processNode(node *modPlanNode) error {
 			planner.incompatible = append(planner.incompatible, pendingModConflict{dependency: dependency, parent: node.item.Name})
 		case ModDependencyOptional, ModDependencyRecommended:
 			if err := planner.resolveOptional(dependency, node.item.Name); err != nil {
+				if planner.selected[dependency.Name] {
+					return err
+				}
 				planner.warnings = append(planner.warnings, err.Error())
 			}
 		default:

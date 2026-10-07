@@ -62,7 +62,8 @@ A self-hosted web interface for operating one Factorio dedicated server safely: 
 - Mod Portal search filtered to the active Factorio compatibility line.
 - Recursive required-dependency resolution plus opt-in optional/recommended dependencies.
 - Profile-scoped startup-setting controls evaluated by the active profile's exact Factorio engine, including localized labels, constraints, defaults and safe reset actions.
-- Reusable mod packs and engine-verified import from an existing save, including worlds created on an older Factorio release and later upgraded to Space Age or a different mod set.
+- Reusable mod packs with additive or full-replacement loading, plus engine-verified import from an existing save, including worlds created on an older Factorio release and later upgraded to Space Age or a different mod set.
+- Optional/recommended Mod Portal dependencies can be preselected through a persistent manager-wide preference, with a review before downloading.
 - Restore existing **Download all** mod ZIPs, including enabled/disabled states and `mod-settings.dat`.
 
 ### Modern interface and deployment
@@ -109,6 +110,14 @@ The implementation details and deliberate boundaries are documented in [TECHNICA
 ### Compatible mods and dependencies
 
 ![Factorio Server Control mod management](screenshots/Screenshot_Mods.png)
+
+Add a saved pack while keeping the active profile's mods and settings (synthetic demonstration data):
+
+![Factorio Server Control additive mod-pack review](screenshots/Screenshot_Mod_Pack_Merge.jpg)
+
+Manager-wide Mod Portal dependency defaults:
+
+![Factorio Server Control Mod Portal preferences](screenshots/Screenshot_Mod_Portal_Preferences.jpg)
 
 ### Profile-scoped mod startup settings
 
@@ -213,7 +222,21 @@ The manager renders chart pixels through the installed Factorio headless binary 
 
 Stop Factorio, open **Mods → Mod startup settings**, then edit the effective startup settings exposed by the enabled mods. The manager runs the active profile's exact installed Factorio version in a disposable local workspace, validates the complete candidate and atomically replaces `mod-settings.dat` only after Factorio accepts it. Only administrators can read these values because mod string settings may contain private data. Runtime-global and per-player settings remain unchanged.
 
-Each profile retains its own settings through activation and container recreation. Creating a mod pack includes the current `mod-settings.dat`; loading that pack activates its stored values together with its mod set. Importing a mod set from a save instead preserves the active profile's existing settings byte for byte. A newly imported mod with no stored entry uses its own Factorio default, while unknown entries are retained for compatibility.
+Each profile retains its own settings through activation and container recreation. Creating a mod pack includes the current `mod-settings.dat`; **Replace mods** activates its stored values together with its entire mod set. **Add to profile** and importing a mod set from a save instead preserve the active profile's existing settings byte for byte. A newly added mod with no stored entry uses its own Factorio default, while unknown entries are retained for compatibility.
+
+### Adding saved mod packs
+
+Stop Factorio, open **Mods → Mod packs**, and choose **Add to profile**. The review lists new archives, already-installed mods that will be kept, and conflicts. Existing versions, enabled/disabled states, expansion mode and `mod-settings.dat` are preserved; pack settings and unrelated files are not imported. New mods use the enabled state saved in the pack unless the active mod list already has an entry for them. No additional downloads or game starts are performed.
+
+Different versions of the same installed mod, incompatible Factorio versions, missing/disabled required dependencies and incompatible enabled mods block the operation before anything is changed. Align the versions or adjust the pack first. This check reads mod metadata; it cannot guarantee that arbitrary mods' Lua code will run successfully together. ZIP mods with one version per mod are supported by additive loading; unpacked mods, links and ambiguous multi-version directories must be resolved first. **Replace mods** keeps the previous full-replacement behavior, including restoring the pack's settings, with a separate confirmation.
+
+The preview is tied to the active profile, Factorio version and mod files. If any change before confirmation, review the pack again. Changes are staged and validated inside the mods filesystem, so combined and split Docker persistence layouts are supported without replacing a mount root. Existing installations, profile formats and API replacement behavior are unchanged.
+
+### Mod Portal dependency defaults
+
+In **Server settings → Mod Portal**, administrators can enable **Preselect optional and recommended dependencies**. It starts disabled for existing and new installations. The setting is manager-wide, can be changed while Factorio is running, and persists beside the manager configuration in `mod-portal-preferences.json` under `/opt/fsm-data` in Docker.
+
+When opening a new download review, available optional/recommended dependencies of the selected mod and its required dependencies are checked. Their required dependencies are resolved as usual; optional integrations introduced by those extra mods remain unchecked. Every optional selection can still be changed before downloading, including clearing all of them. If the default selection cannot be resolved, the review remains available with a warning and manual selection. Existing mods, open reviews, saved packs, save imports and bulk updates are not changed by this preference.
 
 ### Fixed checkpoints
 
