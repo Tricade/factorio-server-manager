@@ -28,6 +28,9 @@
     "url": "https://github.com/Tricade/factorio-server-manager/issues"
   },
   "homepage": "https://github.com/Tricade/factorio-server-manager#readme",
+  "overrides": {
+    "postcss-selector-parser": "^7.1.6"
+  },
   "devDependencies": {
     "@babel/core": "^7.29.7",
     "@babel/preset-env": "^7.29.7",

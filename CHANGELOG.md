@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Security
 - Updated the transitive build dependency `fast-uri` from 3.1.7 to 3.1.8 to fix inconsistent host-name normalization for percent-encoded scheme-relative URLs (GHSA-hrr3-gc8f-f4qj). This dependency is not included in the production runtime; application behavior and storage formats are unchanged.
+- Updated `source-map-js` to 1.2.2 and all build-time `postcss-selector-parser` copies to 7.1.6 for upstream denial-of-service fixes. An npm override retains the existing Tailwind 3 integration instead of introducing a breaking Tailwind 4 migration; the generated production stylesheet is byte-identical.
 
 ## [0.19.1] - 2026-09-27
 
