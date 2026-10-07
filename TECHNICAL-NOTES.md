@@ -28,7 +28,8 @@
 - The overview combines ephemeral live connected-player state with bounded player-time metadata from the most recent isolated snapshot; it does not present stale snapshot membership as current online state.
 - New snapshots may persist bounded player-force entity footprints beside each surface image for a lazy browser Canvas overlay; older image-only snapshots remain valid.
 - Mod Portal search, releases and dependency resolution are restricted to the active Factorio major/minor line.
-- Required dependencies are selected automatically; optional and recommended dependencies remain explicit choices.
+- Required dependencies are selected automatically. Optional and recommended dependencies default to unselected; a persistent manager-wide preference can preselect them in new reviews, where every selection remains editable.
+- Saved mod packs can add missing ZIP mods without replacing existing mods, enabled states or settings, or explicitly replace the entire mod set using the original workflow. Both operations require a stopped runtime.
 - Visible mod startup settings are evaluated by the active profile's exact local Factorio engine and can be edited only by an administrator while the game process is fully stopped.
 - Save-mod import asks Factorio itself for the save's current mod state in an isolated workspace instead of trusting creation-time `level-init.dat` metadata; downloads and activation remain staged and rollback-safe.
 - UI version and source revision are visible in the navigation footer; the HTML entry point is cache-revalidated and uses versioned asset URLs.
@@ -80,7 +81,19 @@ Schema evaluation uses a disposable workspace:
 
 GET and PATCH endpoints are administrator-only and `no-store`. The operation holds the profile, lifecycle, world-generation, map-snapshot and program-file guards so a profile switch, server start or binary replacement cannot race the engine check. A revision covers the profile identity, exact version, mod list, enabled mod contents and current settings; a changed revision rejects a stale form. Every requested value is type- and constraint-checked, the full candidate is evaluated again by Factorio, and only a matching result is committed through sibling-file atomic replacement with Windows rollback behavior. Child-process errors and setting values are never written to responses or manager logs.
 
-Profiles copy the complete mods directory, so startup settings remain independent through clone, snapshot, activation and container recreation. Mod-pack creation intentionally snapshots `mod-settings.dat`, and loading a pack activates those stored values with the pack. Save-mod import follows the separate preservation rule above.
+Profiles copy the complete mods directory, so startup settings remain independent through clone, snapshot, activation and container recreation. Mod-pack creation intentionally snapshots `mod-settings.dat`. **Replace mods** activates those stored values with the pack; **Add to profile** preserves the active settings byte for byte and ignores incoming pack settings. Save-mod import follows the separate preservation rule above.
+
+### Additive mod packs and download defaults
+
+Pack previews and activation hold the profile-data and lifecycle locks. The manager reads regular ZIP mods, checks their metadata and the combined enabled dependency graph, and computes a revision from the active profile, exact Factorio version and the complete current/pack file state. Version conflicts, missing or disabled required dependencies, incompatible enabled mods and stale previews prevent activation. Existing mod-list entries, enabled flags, built-in game-mode choices and unknown settings are preserved. These are metadata checks, not execution of arbitrary mod Lua code.
+
+Activation stages and backs up entries inside the active mods filesystem, swaps directory contents without replacing the mount point, validates the committed mod set and rolls back on failure. No-op merges do not rewrite data. Unpacked mod directories, symlinks and multiple archives for the same mod are rejected rather than resolved implicitly.
+
+The optional/recommended default is stored atomically in `mod-portal-preferences.json` beside the bootstrap manager configuration, under `/opt/fsm-data` in the container. It is global, defaults to false when absent and can be changed by an administrator while Factorio is running. It applies only to the initial review's available optional/recommended dependencies; selected extras' required dependencies are resolved normally, but newly exposed optional integrations are not recursively selected. Manual replans and installation use explicit reviewed selections. An unresolvable default combination falls back to the basic review with a warning.
+
+### Frontend dependency compatibility
+
+The build retains Tailwind 3 and its existing PostCSS integration. An npm override resolves every `postcss-selector-parser` instance to at least 7.1.6, including Tailwind's and `postcss-nested`'s older declared ranges, to address GHSA-rj75-hqrm-r3gf. Lockfile and nested-selector regression tests cover the override; the release comparison produced byte-identical production CSS before and after it. Recheck this compatibility when upgrading the parser or Tailwind, and remove the override when upstream dependency ranges no longer need it. A Tailwind 4 migration remains separate work.
 
 ## Server profiles
 

@@ -18,11 +18,18 @@
   <ReadMe>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/README.md</ReadMe>
   <Icon>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped --stop-timeout=180</ExtraParams>
-  <Date>2026-09-27</Date>
+  <Date>2026-10-07</Date>
   <DonateText>Support Factorio Server Control</DonateText>
   <DonateLink>https://ko-fi.com/tricade</DonateLink>
   <Requires>Persistent manager-data, saves, mods and config paths are required. Internet access to Factorio's official services is required for game-version installation and requested Mod Portal operations; the manager has no built-in telemetry. Keep its HTTP Web UI on a trusted LAN/VPN or behind an HTTPS reverse proxy. Split-mount recreation needs download access to restore the recorded exact game version. The image supports linux/amd64.</Requires>
   <Changes><![CDATA[
+### 0.20.0 (2026-10-07)
+- Add saved mod packs to a stopped profile without overwriting existing mods, enabled states, game mode or settings; preview additions and conflicts first.
+- Keep the original full replacement workflow as Replace mods.
+- Optionally preselect optional and recommended Mod Portal dependencies through a persistent manager-wide setting; the default remains off.
+- Include build-dependency security fixes and reviewed dependency/container-image refreshes, retaining the existing UI styling and Tailwind integration.
+- Updated documentation and mod-pack screenshots. No storage migration, automatic mod changes or game-version changes.
+
 ### 0.19.1 (2026-09-27)
 - Check profile and mod backup sizes before uploading, using the destination's configured limit.
 - Show the upload limit and actionable errors instead of misleading control-service connection failures for oversized backups.
