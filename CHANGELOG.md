@@ -5,15 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-07
+
 ### Added
 - Add saved mod packs to the active profile without replacing existing mods, enabled states, game mode or mod settings. Preview additions and dependency/version conflicts before applying; the existing full replacement action remains available as **Replace mods**.
 - Persist a manager-wide **Preselect optional and recommended dependencies** preference for new Mod Portal download reviews. It defaults to off, and selections remain editable before downloading.
 
 ### Changed
 - Additive pack loading requires a stopped server, validates the combined mod set and rejects stale previews. Activation stages entries inside the existing mods filesystem and rolls back on failure, including on Docker bind mounts.
+- Included the reviewed Sass, Webpack, React Hook Form and transitive dependency updates plus pinned Node, Go and Ubuntu image refreshes merged since 0.19.1.
+- Updated mod-pack documentation, technical notes, synthetic 16:9 screenshots and Unraid release metadata. Existing storage paths, profile formats and game-version choices are unchanged.
 
 ### Security
 - Updated the transitive build dependency `fast-uri` from 3.1.7 to 3.1.8 to fix inconsistent host-name normalization for percent-encoded scheme-relative URLs (GHSA-hrr3-gc8f-f4qj). This dependency is not included in the production runtime; application behavior and storage formats are unchanged.
+- Updated `source-map-js` to 1.2.2 and all build-time `postcss-selector-parser` copies to 7.1.6 for upstream denial-of-service fixes. An npm override retains the existing Tailwind 3 integration instead of introducing a breaking Tailwind 4 migration; the generated production stylesheet is byte-identical.
 
 ## [0.19.1] - 2026-09-27
 
