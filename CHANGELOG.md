@@ -3,6 +3,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Security
+- Update the transitive Axios dependency `follow-redirects` to 1.16.1 for credential-header stripping fixes (GHSA-q3jh-wrc6-jgq8 and GHSA-8r9p-f939-6h3c). Add loopback regression tests for array-form headers and sensitive header names containing regular-expression characters. The affected Node HTTP adapter is not used by the production browser UI or Go server.
+
+### Changed
+- Update React Hook Form to 7.90.0, Webpack to 5.112.0 and their transitive build dependencies; update `golang.org/x/crypto` to 0.58.0 with its related Go modules.
+- Refresh the pinned Node 24 frontend-build image to 24.22.0. Existing application versions, data formats and deployment settings are unchanged.
+
 ## [0.20.1] - 2026-10-17
 
 ### Security
