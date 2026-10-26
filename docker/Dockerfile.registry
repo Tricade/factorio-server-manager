@@ -43,7 +43,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 
 # glibc is required by the official Factorio headless server.
-FROM ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55 AS runtime
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS runtime
 
 ARG VERSION
 ARG VCS_REF
