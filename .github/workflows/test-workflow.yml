@@ -42,6 +42,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Use the Ubuntu archive for browser system dependencies
+        run: |
+          # The hosted runner's regional Azure mirror can stall until this job times out.
+          # Keep Ubuntu's signed repositories; change only the ephemeral runner mirror.
+          if test -f /etc/apt/apt-mirrors.txt; then
+            sudo sed -i 's|http://azure\.archive\.ubuntu\.com/ubuntu/|https://archive.ubuntu.com/ubuntu/|g' /etc/apt/apt-mirrors.txt
+          fi
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:browser
       - name: Retain synthetic browser failure diagnostics
