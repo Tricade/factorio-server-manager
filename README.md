@@ -276,7 +276,7 @@ The public app name does not rename this technical appdata root. Its four contai
 Requirements:
 
 - Node.js 24, matching CI
-- The exact Go patch version in `src/go.mod` (set `GOTOOLCHAIN=go1.26.9` when the default installation differs)
+- The exact Go patch version in `src/go.mod` (set `GOTOOLCHAIN=go1.26.10` when the default installation differs)
 - Python 3 for deployment and repository validators
 - Docker with Buildx for the production image
 
