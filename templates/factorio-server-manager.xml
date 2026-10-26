@@ -18,11 +18,17 @@
   <ReadMe>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/README.md</ReadMe>
   <Icon>https://raw.githubusercontent.com/Tricade/factorio-server-manager/main/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped --stop-timeout=180</ExtraParams>
-  <Date>2026-10-17</Date>
+  <Date>2026-10-26</Date>
   <DonateText>Support Factorio Server Control</DonateText>
   <DonateLink>https://ko-fi.com/tricade</DonateLink>
   <Requires>Persistent manager-data, saves, mods and config paths are required. Internet access to Factorio's official services is required for game-version installation and requested Mod Portal operations; the manager has no built-in telemetry. Keep its HTTP Web UI on a trusted LAN/VPN or behind an HTTPS reverse proxy. Split-mount recreation needs download access to restore the recorded exact game version. The image supports linux/amd64.</Requires>
   <Changes><![CDATA[
+### 0.20.2 (2026-10-26)
+- Update the Go backend to 1.26.10 for compromised-certificate rejection and the build-only Node runtime to 24.22.1 for Brotli and related security fixes.
+- Patch fast-uri, serialize-javascript and follow-redirects, with regression tests for URI parsing, script end tags and credential-header stripping.
+- Include reviewed frontend, Go module, Ubuntu image and registry-action updates; make CI dependency downloads more reliable.
+- No data migration, interface redesign or automatic game-version changes. Existing profiles, saves, mods, settings and storage mappings are preserved.
+
 ### 0.20.1 (2026-10-17)
 - Fix queued stops after failed startup and wait for pending startup during manager shutdown.
 - Preserve current profile and connection state when older requests or WebSocket callbacks finish late.

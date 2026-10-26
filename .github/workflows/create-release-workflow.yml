@@ -243,6 +243,10 @@ jobs:
 
       - name: Install release cross-compiler
         run: |
+          # Match browser CI: avoid the hosted runner's intermittently slow regional mirror.
+          if test -f /etc/apt/apt-mirrors.txt; then
+            sudo sed -i 's|http://azure\.archive\.ubuntu\.com/ubuntu/|https://archive.ubuntu.com/ubuntu/|g' /etc/apt/apt-mirrors.txt
+          fi
           sudo apt-get update
           sudo apt-get install --yes gcc-multilib g++-multilib gcc-mingw-w64 g++-mingw-w64
 
