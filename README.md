@@ -8,6 +8,8 @@
 
 A self-hosted web interface for operating one Factorio dedicated server safely: profiles, saves, fixed checkpoints, mods, game versions, Space Age, world creation, logs, users and server controls in one responsive UI.
 
+See the [0.20.2 release notes](RELEASE-NOTES-0.20.2.md) for the current security updates, verification and upgrade guidance, or the [changelog](CHANGELOG.md) for earlier releases.
+
 > [!NOTE]
 > This repository is a modernized fork of the original **Factorio Server Manager** project, [OpenFactorioServerManager/factorio-server-manager](https://github.com/OpenFactorioServerManager/factorio-server-manager). The original project, its authors and its contributors remain the source of the manager this fork builds on. See [Origin and attribution](#origin-and-attribution).
 

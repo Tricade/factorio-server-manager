@@ -96,7 +96,11 @@ The optional/recommended default is stored atomically in `mod-portal-preferences
 
 The build uses [Tailwind 4's PostCSS integration](https://tailwindcss.com/docs/upgrade-guide), with the existing color and spacing configuration and explicit UI source directories. The stylesheet is ordinary CSS; legacy opacity utilities have been migrated to slash-opacity forms. A build regression compiles the actual stylesheet and checks the palette and responsive utilities. The `postcss-selector-parser` override retains at least 7.1.6 for remaining CSS-minifier dependencies.
 
-Tailwind and Node.js are not installed in the production runtime. Removing the old Tailwind/chokidar/micromatch chain eliminates the unpatched `braces` dependency ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)); a lockfile regression prevents its accidental return. `npm audit` reports no findings for this lockfile on 2026-10-17. This is time-sensitive, so rerun the audit for dependency changes rather than treating that result as a permanent guarantee.
+Tailwind and Node.js are not installed in the production runtime. Removing the old Tailwind/chokidar/micromatch chain eliminates the unpatched `braces` dependency ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)); a lockfile regression prevents its accidental return. `npm audit` reports no findings for this lockfile on 2026-10-26. This is time-sensitive, so rerun the audit for dependency changes rather than treating that result as a permanent guarantee.
+
+The frontend container builder uses [Node 24.22.1](https://nodejs.org/en/blog/release/v24.22.1/) with the Brotli security backport. Build-only `fast-uri` 3.1.9 and `serialize-javascript` 7.1.4 include the upstream URI-parsing and script-end-tag fixes. Regression tests exercise the dependencies actually resolved by AJV and the CSS minifier, and check all locked copies. The Axios Node adapter's `follow-redirects` 1.16.1 header-stripping fixes are covered by disposable loopback tests; the browser UI does not use that adapter.
+
+The backend is built and tested with Go 1.26.10, including the [compromised-intermediate certificate denylist](https://pkg.go.dev/vuln/GO-2026-6809). The current `govulncheck` result has no finding in reachable code or imported packages. Its module-level advisory GO-2026-5932 concerns the unused `golang.org/x/crypto/openpgp` package; the manager does not import or ship that package in its executable. This distinction does not replace regular dependency and image maintenance.
 
 ## Server profiles
 

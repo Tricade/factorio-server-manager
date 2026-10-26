@@ -3,7 +3,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.20.2] - 2026-10-26
 
 ### Security
 - Refresh the pinned frontend builder to Node 24.22.1 for the Brotli decoder backport (CVE-2026-111497), DNS/TLS fixes and updated certificate trust data. Node is build-only and is not included in the final Go/Ubuntu runtime image.
@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - Update React Hook Form to 7.90.0, Webpack to 5.112.1 and their transitive build dependencies; update `golang.org/x/crypto` to 0.58.0 with its related Go modules.
+- Refresh the pinned Ubuntu 24.04 runtime images and Docker registry login action to 4.7.0. Image names, storage paths, ports and environment settings remain unchanged.
+- Use the official Ubuntu archive for hosted-runner browser and release-toolchain dependencies to avoid repeated regional-mirror download timeouts; retain all tests and package-signature checks.
 
 ## [0.20.1] - 2026-10-17
 
