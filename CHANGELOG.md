@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Security
+- Build and test the backend with Go 1.26.10, including the `crypto/x509` denylist for compromised intermediate certificates (CVE-2026-111943 / GO-2026-6809). Align the module, container builders, mounted-directory tests and release checks; profiles, game versions and persistent data are unchanged.
 - Update the transitive Axios dependency `follow-redirects` to 1.16.1 for credential-header stripping fixes (GHSA-q3jh-wrc6-jgq8 and GHSA-8r9p-f939-6h3c). Add loopback regression tests for array-form headers and sensitive header names containing regular-expression characters. The affected Node HTTP adapter is not used by the production browser UI or Go server.
 
 ### Changed

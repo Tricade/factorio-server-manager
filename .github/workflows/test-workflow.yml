@@ -67,7 +67,7 @@ jobs:
       - if: contains(matrix.os, 'ubuntu')
         working-directory: src
         run: |
-          go version | grep -F 'go1.26.9 '
+          go version | grep -F 'go1.26.10 '
           go test ./... -short -count=1
           go test ./factorio ./api -race -short -run 'Test(ModPackMerge|MergeModPack|ModPortalPreferences|ModPortalOptionalDefaults)' -count=1
           go test ./lockfile ./api/websocket -race -short -count=1
@@ -100,7 +100,7 @@ jobs:
             --env FSM_TEST_MOUNTED_FACTORIO_DIR=/opt/factorio \
             --env FSM_TEST_MOUNTED_MODS_DIR=/opt/factorio/mods \
             --workdir /workspace \
-            golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c \
+            golang:1.26.10-bookworm@sha256:632dff7351799a5a9954a48dc06670ade72ee44e8c351cdc0e5a57af2fea21af \
             go test ./factorio -run '^(TestDeleteAllModsAtMountedDestination|TestReplaceModsFromSaveAtMountedDestination|TestReplaceReleaseFilesAtMountedDestination|TestModStartupSettingsAtomicWriteAtMountedDestination|TestRestoreModBackupAtMountedDestination|TestMergeModPackAtMountedDestination)$' -count=1 -v
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - name: Build production container

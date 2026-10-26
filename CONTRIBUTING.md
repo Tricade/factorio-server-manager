@@ -18,7 +18,7 @@ Work from `main` on a focused branch and preserve existing installations. The ru
 
 ## Toolchain and local checks
 
-Use Node.js 24, Python 3, and the exact Go patch in `src/go.mod`. Set `GOTOOLCHAIN=go1.26.9` in the shell when the installed Go differs (`$env:GOTOOLCHAIN='go1.26.9'` in PowerShell). Recheck that value when the module changes.
+Use Node.js 24, Python 3, and the exact Go patch in `src/go.mod`. Set `GOTOOLCHAIN=go1.26.10` in the shell when the installed Go differs (`$env:GOTOOLCHAIN='go1.26.10'` in PowerShell). Recheck that value when the module changes.
 
 From the repository root:
 
