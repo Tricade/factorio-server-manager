@@ -6,13 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Security
+- Refresh the pinned frontend builder to Node 24.22.1 for the Brotli decoder backport (CVE-2026-111497), DNS/TLS fixes and updated certificate trust data. Node is build-only and is not included in the final Go/Ubuntu runtime image.
 - Build and test the backend with Go 1.26.10, including the `crypto/x509` denylist for compromised intermediate certificates (CVE-2026-111943 / GO-2026-6809). Align the module, container builders, mounted-directory tests and release checks; profiles, game versions and persistent data are unchanged.
 - Update the build-only dependencies `fast-uri` to 3.1.9 and `serialize-javascript` to 7.1.4, including the fixes for encoded URI schemes and serialized script end tags. Add regression tests against the actual build-tool dependencies and all locked copies; neither package is part of the running Go server or browser UI.
 - Update the transitive Axios dependency `follow-redirects` to 1.16.1 for credential-header stripping fixes (GHSA-q3jh-wrc6-jgq8 and GHSA-8r9p-f939-6h3c). Add loopback regression tests for array-form headers and sensitive header names containing regular-expression characters. The affected Node HTTP adapter is not used by the production browser UI or Go server.
 
 ### Changed
 - Update React Hook Form to 7.90.0, Webpack to 5.112.1 and their transitive build dependencies; update `golang.org/x/crypto` to 0.58.0 with its related Go modules.
-- Refresh the pinned Node 24 frontend-build image to 24.22.0. Existing application versions, data formats and deployment settings are unchanged.
 
 ## [0.20.1] - 2026-10-17
 
