@@ -23,6 +23,9 @@ import ModStartupSettings from "./components/ModStartupSettings";
 import {useProfiles} from "../../context/ProfileContext";
 import ScopeBadge from "../../components/ScopeBadge";
 import BackupRestore from "../../components/BackupRestore";
+import modMutationFeedback from "./components/modMutationFeedback.cjs";
+
+const {refreshAfterMutation, refreshFailureMessage} = modMutationFeedback;
 
 const Mods = ({serverStatus, canManage = false}) => {
     const {activeProfile, refreshProfiles} = useProfiles();
@@ -33,6 +36,7 @@ const Mods = ({serverStatus, canManage = false}) => {
     const [fuse, setFuse] = useState(undefined);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
+    const [refreshErrors, setRefreshErrors] = useState({installed: "", packs: ""});
     const [portalLoadError, setPortalLoadError] = useState("");
     const [reloadToken, setReloadToken] = useState(0);
     const [startupSettingsRefreshKey, setStartupSettingsRefreshKey] = useState(0);
@@ -41,31 +45,45 @@ const Mods = ({serverStatus, canManage = false}) => {
     const [isDeleteAllDialogOpen, setIsDeleteAllDialogOpen] = useState(false);
     const [updatableMods, setUpdatableMods] = useState([]);
     const statusLocked = Boolean(serverStatus?.known === false || serverStatus?.running || serverStatus?.stopping);
-    const disabled = Boolean(!canManage || statusLocked || loadError);
+    const refreshError = refreshErrors.installed || refreshErrors.packs;
+    const disabled = Boolean(!canManage || statusLocked || loadError || refreshError);
 
     const addUpdatableMod = useCallback(mod => {
         setUpdatableMods(current => [...current.filter(existing => existing.modName !== mod.modName), mod]);
     }, []);
 
     const fetchInstalledMods = useCallback(async () => {
-        const result = await modsResource.installed();
-        setUpdatableMods([]);
-        setInstalledMods(result || []);
-        setStartupSettingsRefreshKey(token => token + 1);
-        refreshProfiles().catch(() => undefined);
-        return result;
+        try {
+            const result = await modsResource.installed();
+            setUpdatableMods([]);
+            setInstalledMods(result || []);
+            setStartupSettingsRefreshKey(token => token + 1);
+            setRefreshErrors(current => ({...current, installed: ""}));
+            refreshProfiles().catch(() => undefined);
+            return result;
+        } catch (error) {
+            setRefreshErrors(current => ({...current, installed: "Installed mods could not be refreshed. Use Retry to load the latest list."}));
+            throw error;
+        }
     }, [refreshProfiles]);
 
     const fetchModPacks = useCallback(async () => {
-        const result = await modsResource.packs.list();
-        setModPacks(result || []);
-        return result;
+        try {
+            const result = await modsResource.packs.list();
+            setModPacks(result || []);
+            setRefreshErrors(current => ({...current, packs: ""}));
+            return result;
+        } catch (error) {
+            setRefreshErrors(current => ({...current, packs: "Mod packs could not be refreshed. Use Retry to load the latest list."}));
+            throw error;
+        }
     }, []);
 
     useEffect(() => {
         let active = true;
         setIsLoading(true);
         setLoadError("");
+        setRefreshErrors({installed: "", packs: ""});
         setPortalLoadError("");
         (async () => {
             let currentFactorioVersion = null;
@@ -111,8 +129,8 @@ const Mods = ({serverStatus, canManage = false}) => {
         setIsDeletingAllMods(true);
         try {
             await modsResource.deleteAll();
-            await fetchInstalledMods();
-            window.flash("All installed mods were removed.", "green");
+            const refreshed = await refreshAfterMutation(fetchInstalledMods);
+            window.flash(refreshed ? "All installed mods were removed." : refreshFailureMessage, refreshed ? "green" : "yellow");
         } finally {
             setIsDeletingAllMods(false);
         }
@@ -122,8 +140,8 @@ const Mods = ({serverStatus, canManage = false}) => {
         setIsUpdatingAllMods(true);
         try {
             await Promise.all(updatableMods.map(modsResource.update));
-            await fetchInstalledMods();
-            window.flash("Compatible mod updates installed.", "green");
+            const refreshed = await refreshAfterMutation(fetchInstalledMods);
+            window.flash(refreshed ? "Compatible mod updates installed." : refreshFailureMessage, refreshed ? "green" : "yellow");
         } catch (error) {
             window.flash(error?.response?.data || "Not all mods could be updated.", "red");
         } finally {
@@ -131,9 +149,18 @@ const Mods = ({serverStatus, canManage = false}) => {
         }
     };
 
-    const toggleMod = modName => modsResource.toggle(modName).then(fetchInstalledMods);
-    const deleteMod = modName => modsResource.delete(modName).then(fetchInstalledMods);
-    const updateMod = version => modsResource.update(version).then(fetchInstalledMods);
+    const toggleMod = async modName => {
+        await modsResource.toggle(modName);
+        return {refreshed: await refreshAfterMutation(fetchInstalledMods)};
+    };
+    const deleteMod = async modName => {
+        await modsResource.delete(modName);
+        return {refreshed: await refreshAfterMutation(fetchInstalledMods)};
+    };
+    const updateMod = async version => {
+        await modsResource.update(version);
+        return {refreshed: await refreshAfterMutation(fetchInstalledMods)};
+    };
 
     return <>
         <PageHeader
@@ -147,14 +174,15 @@ const Mods = ({serverStatus, canManage = false}) => {
             Installed-mod changes are locked until Factorio is confirmed stopped. Manager-wide mod-pack organization and downloads remain available.
         </Alert>}
 
-        {loadError && <Alert type="danger" className="mb-5">
+        {(loadError || refreshError) && <Alert type={refreshError && !loadError ? "warning" : "danger"} className="mb-5">
             <div className="flex flex-wrap items-center gap-3">
-                <span>{loadError}</span>
+                <span>{loadError || refreshError}</span>
                 <Button size="sm" type="secondary" onClick={() => setReloadToken(token => token + 1)}>Retry</Button>
             </div>
         </Alert>}
 
-        {canManage && !disabled && <TabControl>
+        {canManage && !loadError && <fieldset disabled={Boolean(refreshError)} className="border-0 p-0 m-0 min-w-0">
+        <TabControl>
             <Tab title="Mod portal"><AddMod
                 refetchInstalledMods={fetchInstalledMods}
                 fuse={fuse}
@@ -165,7 +193,8 @@ const Mods = ({serverStatus, canManage = false}) => {
             <Tab title="Upload archive"><UploadMod refetchInstalledMods={fetchInstalledMods}/></Tab>
             <Tab title="Restore backup"><div className="p-5"><BackupRestore kind="mods" disabled={disabled} activeProfile={activeProfile} onComplete={fetchInstalledMods}/></div></Tab>
             <Tab title="Import from save"><LoadMods refreshMods={fetchInstalledMods}/></Tab>
-        </TabControl>}
+        </TabControl>
+        </fieldset>}
 
         <Panel
             title="Installed mods"
@@ -223,9 +252,9 @@ const Mods = ({serverStatus, canManage = false}) => {
                     reloadMods={fetchInstalledMods}
                     reloadModPacks={fetchModPacks}
                     profileLocked={disabled}
-                    readOnly={!canManage}
+                    readOnly={!canManage || Boolean(refreshError)}
                 />)}</div>}
-            actions={canManage ? <CreateModPack onSuccess={fetchModPacks}/> : null}
+            actions={canManage && !refreshError ? <CreateModPack onSuccess={fetchModPacks}/> : null}
         />
 
         <ConfirmDialog

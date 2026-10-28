@@ -102,9 +102,17 @@ const Releases = ({serverStatus, refreshServerStatus, canManage = false}) => {
         setInstalling(true);
         try {
             const result = await server.installRelease(target);
-            await Promise.all([refreshServerStatus(), refreshProfiles().catch(() => undefined)]);
+            let statusRefreshed = true;
+            try {
+                await refreshServerStatus();
+            } catch (error) {
+                statusRefreshed = false;
+            }
+            await refreshProfiles().catch(() => undefined);
             await loadRuntime();
-            window.flash(`${result.message}: ${result.installed_version || target}`, "green");
+            window.flash(statusRefreshed
+                ? `${result.message}: ${result.installed_version || target}`
+                : `Factorio ${result.installed_version || target} was installed, but process status could not be refreshed.`, statusRefreshed ? "green" : "yellow");
         } catch (error) {
             window.flash(error?.response?.data || `Factorio ${target} could not be installed.`, "red");
         } finally {

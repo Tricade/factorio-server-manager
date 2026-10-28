@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from "react";
+import React, {useCallback, useEffect, useRef, useState} from "react";
 import {useForm} from "react-hook-form";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {faDownload, faFloppyDisk, faHardDrive, faRotate, faTrashAlt} from "@fortawesome/free-solid-svg-icons";
@@ -44,31 +44,45 @@ const Checkpoints = ({serverStatus, onRestore, canManage = false}) => {
     const [isCreating, setIsCreating] = useState(false);
     const [restoringID, setRestoringID] = useState("");
     const [checkpointToDelete, setCheckpointToDelete] = useState(null);
+    const requestGeneration = useRef(0);
     const {register, handleSubmit, reset, formState: {errors}} = useForm({defaultValues: defaultSettings});
 
     const applyState = useCallback((result, syncSettings = false) => {
+        // A completed mutation is authoritative over any older background read.
+        requestGeneration.current += 1;
         setState(result);
         if (syncSettings && result?.settings) reset(result.settings);
     }, [reset]);
 
     const load = useCallback(async () => {
+        const currentRequest = ++requestGeneration.current;
+        const isCurrent = () => currentRequest === requestGeneration.current;
         setIsLoading(true);
         setLoadError("");
         try {
-            applyState(await savesResource.checkpoints.list(), true);
+            const result = await savesResource.checkpoints.list();
+            if (isCurrent()) {
+                setState(result);
+                if (result?.settings) reset(result.settings);
+            }
         } catch (error) {
-            setLoadError("Checkpoint data and schedule settings could not be loaded.");
+            if (isCurrent()) setLoadError("Checkpoint data and schedule settings could not be loaded.");
         } finally {
-            setIsLoading(false);
+            if (isCurrent()) setIsLoading(false);
         }
-    }, [applyState]);
+    }, [reset]);
 
     useEffect(() => { load(); }, [load]);
 
     useEffect(() => {
         if (!state) return undefined;
         const timer = window.setInterval(() => {
-            savesResource.checkpoints.list().then(setState).catch(() => undefined);
+            const currentRequest = ++requestGeneration.current;
+            savesResource.checkpoints.list()
+                .then(result => {
+                    if (currentRequest === requestGeneration.current) setState(result);
+                })
+                .catch(() => undefined);
         }, 30000);
         return () => window.clearInterval(timer);
     }, [Boolean(state)]);

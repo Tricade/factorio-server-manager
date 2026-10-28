@@ -221,7 +221,7 @@ const ModStartupSettings = ({profileId, statusLocked, refreshKey = 0}) => {
                                                     size="sm"
                                                     type="ghost"
                                                     title={`Reset ${setting.display_name} to its default`}
-                                                    isDisabled={settingValuesEqual(draft[setting.name], setting.default_value)}
+                                                    isDisabled={isSaving || settingValuesEqual(draft[setting.name], setting.default_value)}
                                                     onClick={() => setDraft(current => ({...current, [setting.name]: cloneSettingValue(setting.default_value)}))}
                                                 >
                                                     <FontAwesomeIcon icon={faRotateLeft}/> Reset

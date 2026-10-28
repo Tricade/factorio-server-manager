@@ -108,6 +108,16 @@ test("a failed websocket send reports the command failure without throwing or re
     connections[0].failSend = true;
     assert.doesNotThrow(() => bus.emit("command send", "save"));
     assert.equal(failures.length, 1);
+    assert.equal(bus.sendCommand("save"), false);
+    assert.equal(failures.length, 2);
+});
+
+test("a successful command send reports that the command was accepted by the socket", () => {
+    const {bus, connections} = setup();
+    bus.connect();
+    connections[0].open();
+    assert.equal(bus.sendCommand("/help"), true);
+    assert.deepEqual(connections[0].sent.at(-1).controls, {type: "command", value: "/help"});
 });
 
 test("malformed websocket JSON is reported without preventing the next valid message", () => {

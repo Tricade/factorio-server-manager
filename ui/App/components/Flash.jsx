@@ -2,14 +2,15 @@ import React, {useCallback, useEffect, useRef, useState} from "react";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {faCheckCircle, faCircleExclamation, faCircleInfo, faXmark} from "@fortawesome/free-solid-svg-icons";
 import Bus from "../../notifications";
+import {plainTextMessage} from "../../api/messageText.cjs";
 
 export const Flash = () => {
     const [toast, setToast] = useState(null);
     const timer = useRef(null);
 
-    const flashListener = useCallback(({message, color}) => {
+    const flashListener = useCallback(payload => {
         if (timer.current) window.clearTimeout(timer.current);
-        setToast({message, color});
+        setToast({message: plainTextMessage(payload?.message), color: payload?.color});
         timer.current = window.setTimeout(() => setToast(null), 5000);
     }, []);
 

@@ -31,8 +31,7 @@ const Console = ({serverStatus, socketState}) => {
         event.preventDefault();
         const trimmed = command.trim();
         if (!trimmed || !running || socketState !== "connected") return;
-        socket.emit("command send", trimmed);
-        setCommand("");
+        if (socket.sendCommand(trimmed)) setCommand("");
     };
 
     return <>

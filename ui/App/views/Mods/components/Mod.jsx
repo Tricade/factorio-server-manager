@@ -4,6 +4,9 @@ import {faArrowUp, faCheck, faSpinner, faTimes, faToggleOff, faToggleOn, faTrash
 import {coerce, gt, satisfies} from "semver";
 import modsResource from "../../../../api/resources/mods";
 import IconButton from "../../../components/IconButton";
+import modMutationFeedback from "./modMutationFeedback.cjs";
+
+const {refreshFailureMessage} = modMutationFeedback;
 
 const Mod = ({mod, factorioVersion, toggleMod, deleteMod, updateMod, addUpdatableMod, disabled = false}) => {
     const [newVersion, setNewVersion] = useState(null);
@@ -11,7 +14,8 @@ const Mod = ({mod, factorioVersion, toggleMod, deleteMod, updateMod, addUpdatabl
 
     const runAction = async (action, fallback) => {
         try {
-            await action();
+            const result = await action();
+            if (result?.refreshed === false) window.flash(refreshFailureMessage, "yellow");
         } catch (error) {
             window.flash(error?.response?.data || fallback, "red");
         }
@@ -53,8 +57,10 @@ const Mod = ({mod, factorioVersion, toggleMod, deleteMod, updateMod, addUpdatabl
     const installUpdate = async () => {
         setIsUpdating(true);
         try {
-            await updateMod(newVersion);
-            window.flash(`${mod.title || mod.name} updated.`, "green");
+            const result = await updateMod(newVersion);
+            window.flash(result?.refreshed === false
+                ? refreshFailureMessage
+                : `${mod.title || mod.name} updated.`, result?.refreshed === false ? "yellow" : "green");
         } catch (error) {
             window.flash(error?.response?.data || "Mod could not be updated.", "red");
         } finally {

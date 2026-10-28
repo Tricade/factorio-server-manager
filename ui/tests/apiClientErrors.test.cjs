@@ -15,7 +15,9 @@ function loadClient() {
     const module = {exports: {}};
     const window = {flash: message => flashes.push(message), dispatchEvent: event => events.push(event.type)};
     new Function("require", "module", "exports", "window", "Event", code)(name => {
-        assert.equal(name, "axios"); return axios;
+        if (name === "axios") return axios;
+        if (name === "./messageText.cjs") return require("../api/messageText.cjs");
+        throw new Error(`Unexpected dependency: ${name}`);
     }, module, module.exports, window, Event);
     return {reject, flashes, events};
 }

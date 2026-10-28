@@ -157,8 +157,17 @@ const Layout = ({handleLogout, serverStatus, refreshServerStatus, currentUser, s
         setSwitchingProfileID(profile.id);
         try {
             applyProfileState(await profilesResource.activate(profile.id));
-            await refreshServerStatus?.();
             setIsProfileMenuOpen(false);
+            let statusRefreshed = true;
+            try {
+                await refreshServerStatus?.();
+            } catch (error) {
+                statusRefreshed = false;
+            }
+            if (!statusRefreshed) {
+                window.flash(`${profile.name} is active, but Factorio's current status could not be refreshed.`, "yellow");
+                return;
+            }
             window.flash(`${profile.name} activated.`, "green");
         } catch (error) {
             const message = error?.response?.data?.error || error?.response?.data;
