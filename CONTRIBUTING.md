@@ -80,6 +80,8 @@ Add a regression that fails before every bug fix. Use temporary directories and 
 
 After `npm ci` and `npm run build`, run `npx playwright install --with-deps chromium firefox webkit` and `npm run test:browser`. The suite owns a loopback fixture on port 18089 and refuses to reuse an existing listener. It never opens a real manager or reads local saves. The five projects cover desktop Chromium, Firefox and WebKit, plus mobile Chromium/WebKit viewports. External asset requests fail the tests. Native file dialogs and physical mobile devices are outside that matrix. Test traces and screenshots stay in ignored `test-results/`; CI retains only synthetic failure diagnostics for seven days.
 
+Browser-page creation has its own 60-second fixture budget in `ui/e2e/fixtures.cjs`. Hosted-runner WebKit cold starts can otherwise consume almost all of a behavior test before the first application URL is requested. Application tests remain bounded at 30 seconds, assertions retain their normal limit, and automatic retries stay disabled. Startup, use and cleanup failures are covered by Node tests; do not add sleeps or broad retries to conceal a failing UI assertion. See [Playwright fixture timeouts](https://playwright.dev/docs/test-fixtures#fixture-timeout).
+
 ### Disposable real-engine container matrix
 
 The Docker CI job runs `scripts/test-container-lifecycle.py` twice: Factorio 2.0.77/base with a combined mount, and 2.1.20/Space Age with split Unraid mounts. These are representative pinned scenarios, not a claim to cover every cross-product of versions, modes and mods. The script requires Python's standard library, Docker and official Factorio download access. To reproduce:
