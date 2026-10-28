@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-28
+
 ### Fixed
 - Bound release and game-mode JSON requests, reject null/corrupt server settings and admin lists without changing existing state, and serialize release installation against concurrent server startup. Retain recovery backups when rollback fails and require reconciliation before retrying a release change.
 - Keep legacy account migrations transactional and retryable without deleting source data; stage legacy mod-pack conversions and retain recovery archives instead of exposing incomplete packs or deleting unrelated files.
@@ -16,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - Split mixed backend handlers, runtime, profiles, checkpoints, maps, releases and settings into focused modules; remove unused helpers and normalize internal Go result ordering.
 - Add complete human development, architecture, HTTP/WebSocket and recovery references, plus CI source-size/static-analysis guards and expanded failure-path tests. Storage layouts and HTTP contracts remain compatible; external Go helper callers should review the source-level tuple changes documented in the development guide.
+- Give browser-page initialization its own bounded fixture budget so slow hosted-runner WebKit cold starts do not consume application checks' 30-second budget. Keep assertions and zero automatic retries unchanged.
+- Refresh reviewed official Node 24, Go 1.26.10 and Ubuntu 24.04 container-image digests, including the matching mounted-directory test image. Toolchain versions, application dependencies and storage layouts are unchanged.
 
 ## [0.20.2] - 2026-10-26
 

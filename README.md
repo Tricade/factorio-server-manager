@@ -8,7 +8,7 @@
 
 A self-hosted web interface for operating one Factorio dedicated server safely: profiles, saves, fixed checkpoints, mods, game versions, Space Age, world creation, logs, users and server controls in one responsive UI.
 
-See the [0.20.2 release notes](RELEASE-NOTES-0.20.2.md) for the current security updates, verification and upgrade guidance, or the [changelog](CHANGELOG.md) for earlier releases.
+See the [0.21.0 release notes](RELEASE-NOTES-0.21.0.md) for safer recovery, UI error handling, development documentation and upgrade guidance, or the [changelog](CHANGELOG.md) for earlier releases.
 
 > [!NOTE]
 > This repository is a modernized fork of the original **Factorio Server Manager** project, [OpenFactorioServerManager/factorio-server-manager](https://github.com/OpenFactorioServerManager/factorio-server-manager). The original project, its authors and its contributors remain the source of the manager this fork builds on. See [Origin and attribution](#origin-and-attribution).
@@ -113,6 +113,10 @@ The implementation details and deliberate boundaries are documented in [TECHNICA
 ### Compatible mods and dependencies
 
 ![Factorio Server Control mod management](screenshots/Screenshot_Mods.png)
+
+If an upload succeeds but its list refresh fails, the current tab stays open and an explicit Retry reloads the data without repeating the upload:
+
+![Factorio Server Control mod refresh recovery](screenshots/mods-retry.png)
 
 Add a saved pack while keeping the active profile's mods and settings (synthetic demonstration data):
 
