@@ -186,21 +186,35 @@ test("nested API failures use safe toast text and keep the application shell usa
 });
 
 test("a successful mod upload with a failed list refresh keeps the tab mounted and offers retry", async ({page}) => {
-    let listRequests = 0;
-    await page.route("**/api/mods/upload", route => route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({uploaded: true})
-    }));
-    await page.route("**/api/mods/list", route => {
-        listRequests += 1;
-        if (listRequests === 2) {
-            return route.fulfill({status: 503, contentType: "text/plain", body: "Synthetic list refresh unavailable"});
+    let uploadRequestStarted = false;
+    let uploadCommittedResolve;
+    const uploadCommitted = new Promise(resolve => { uploadCommittedResolve = resolve; });
+    let refreshFailureUsed = false;
+    await page.route("**/api/mods/upload", async route => {
+        uploadRequestStarted = true;
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({uploaded: true})
+        });
+        uploadCommittedResolve();
+    });
+    await page.route("**/api/mods/list", async route => {
+        if (uploadRequestStarted) {
+            // A refresh request can be observed as soon as the POST response
+            // is delivered. Wait for its successful commit before failing one.
+            await uploadCommitted;
+            if (!refreshFailureUsed) {
+                refreshFailureUsed = true;
+                return route.fulfill({status: 503, contentType: "text/plain", body: "Synthetic list refresh unavailable"});
+            }
         }
         return route.continue();
     });
     await page.goto("/mods");
     await expect(page.getByRole("heading", {level: 1, name: "Mods & mod packs"})).toBeVisible();
+    await expect(page.locator(".ui-profile-switcher strong")).toHaveText("Demo factory");
+    await expect(page.getByText("No mods in this set", {exact: true})).toBeVisible();
     const uploadTab = page.getByRole("tab", {name: "Upload archive"});
     await uploadTab.click();
     const file = page.locator('input[type="file"]');
