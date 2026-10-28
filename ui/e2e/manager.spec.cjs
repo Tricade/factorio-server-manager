@@ -1,4 +1,4 @@
-const {test, expect} = require("@playwright/test");
+const {test, expect} = require("./fixtures.cjs");
 
 test.beforeEach(async ({page}) => {
     page.testFailures = [];
@@ -229,7 +229,8 @@ test("a successful mod upload with a failed list refresh keeps the tab mounted a
     await expect(file).toBeDisabled();
     await expect(page.getByRole("button", {name: "Upload mod", exact: true})).toBeDisabled();
     if (process.env.FSM_CAPTURE_MODS_RETRY_SCREENSHOT === "1") {
-        await page.screenshot({path: "screenshots/mods-retry.png"});
+        await expect(page.locator(".ui-toast")).toHaveCount(0, {timeout: 10000});
+        await page.screenshot({path: "screenshots/mods-retry.png", animations: "disabled"});
     }
 
     await page.getByRole("button", {name: "Retry", exact: true}).click();
