@@ -36,6 +36,19 @@ The default upload limit is 512 MiB. `FSM_MAX_UPLOAD` changes the container limi
 
 ## Troubleshooting
 
+If a Factorio release replacement reports an incomplete rollback, keep the server stopped and back up the whole game data root and manager state. The error names the retained `.factorio-release-backup-*` recovery directory inside the Factorio root. Do not delete it or retry until the old program entries and runtime metadata have been reconciled; the next replacement refuses to consume retained backups as ordinary program files. Preserve the reported error and directory contents for recovery. A completed rollback removes its temporary backup normally; this rule concerns unresolved recovery state, including failed backup cleanup.
+
+### Recovering a refused legacy migration
+
+Back up the configuration, account databases and relevant game/mod-pack storage before manually resolving a migration. Stop the manager first and inspect a disposable copy; do not delete a database, force an overwrite or rename a persistence mount to make an error disappear.
+
+- Historical LevelDB accounts are migrated as one SQLite transaction. The original LevelDB directory is retained even after success because the later configuration write is a separate operation. A verified retry preserves already migrated passwords. A conflicting existing SQLite account or missing/malformed credential proof is a real conflict: retain both databases and reconcile them deliberately. Do not expose `migrated-user-passwords.jsonl`; it contains private one-time credentials and may include entries from an unsuccessful attempt. Use it only after the migration has completed successfully.
+- Old flat archives under the Factorio `modpacks/` directory are converted into the configured reusable pack root. A successful conversion retains its input as `name.zip.migrated`; no unrelated files or entire legacy directory are deleted. It is not re-imported on each restart.
+- `name.zip.migrating` records an interrupted operation. If no destination exists, startup can validate and resume it. If both it and a destination exist, or a source/recovery path conflicts, startup refuses to guess which data to replace. Back up both, inspect the destination and archive offline, then move the unneeded recovery input out of the active legacy directory or restore the intended source after resolving the collision. Preserve a verified copy before doing either.
+- The no-overwrite source-tracking step requires same-directory hard-link support. If that filesystem cannot provide it, the error leaves the input intact. Convert a backed-up copy on a supported disposable filesystem or move the legacy inputs out of automatic startup processing and rebuild the reusable pack deliberately; do not disable validation.
+
+Initialization failures exit nonzero and log the failed stage so a supervisor can distinguish failed startup from a normal exit. Bad server settings must be a single non-null JSON object; an admin list must be an array of names. Repair a backed-up copy rather than replacing it with an empty object just to get a green status.
+
 | Symptom | Check first | Safe next action |
 | --- | --- | --- |
 | Password changes after replacing the container | `/opt/fsm-data` mapping and existing SQLite database | Restore the intended mount; do not delete the database to bypass login |
@@ -53,7 +66,7 @@ Collect the UI version/revision, exact Factorio version, relevant request/status
 
 ## API integration rules
 
-Use authenticated same-origin requests and the exact methods in [`src/api/routes.go`](../src/api/routes.go). Mutations require an administrator unless explicitly documented otherwise. Common controls are `POST /api/server/start`, `POST /api/server/stop`, `POST /api/server/kill` and `DELETE /api/saves/rm/{save}`. Save names and profile IDs must be URL-encoded path components, not paths supplied by clients.
+Use authenticated same-origin requests and the exact methods in the [HTTP/WebSocket API reference](API.md). Mutations require an administrator unless explicitly documented otherwise. Common controls are `POST /api/server/start`, `POST /api/server/stop`, `POST /api/server/kill` and `DELETE /api/saves/rm/{save}`. Save names and profile IDs must be URL-encoded path components, not paths supplied by clients.
 
 Handle `401` as an expired/invalid login, `403` as insufficient permission, `405` as the wrong HTTP method, `409` as a conflict/stale operation, `413` as an upload limit, and `423` as a stopped-server requirement. Some older handlers return JSON strings while newer endpoints return structured JSON or plain error text; check status and content type rather than assuming every response is a success object. Retry reads where appropriate, but never automatically replay a potentially completed mutation.
 

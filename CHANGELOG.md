@@ -3,6 +3,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+- Bound release and game-mode JSON requests, reject null/corrupt server settings and admin lists without changing existing state, and serialize release installation against concurrent server startup. Retain recovery backups when rollback fails and require reconciliation before retrying a release change.
+- Keep legacy account migrations transactional and retryable without deleting source data; stage legacy mod-pack conversions and retain recovery archives instead of exposing incomplete packs or deleting unrelated files.
+- Return process-control and file-lock errors without terminating the manager; reject unpublished force-stop requests safely and report startup failures with a nonzero exit status.
+- Preserve the last usable map snapshot through interrupted activation and reject invalid render coordinates before conversion.
+- Continue reading after oversized log records instead of abandoning the process pipe or the remaining log file.
+- Render structured UI errors safely, preserve failed console commands, reject stale checkpoint reads, lock pending settings resets, and distinguish completed actions from failed follow-up refreshes with retryable feedback.
+
+### Changed
+- Split mixed backend handlers, runtime, profiles, checkpoints, maps, releases and settings into focused modules; remove unused helpers and normalize internal Go result ordering.
+- Add complete human development, architecture, HTTP/WebSocket and recovery references, plus CI source-size/static-analysis guards and expanded failure-path tests. Storage layouts and HTTP contracts remain compatible; external Go helper callers should review the source-level tuple changes documented in the development guide.
+
 ## [0.20.2] - 2026-10-26
 
 ### Security

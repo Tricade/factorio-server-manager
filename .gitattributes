@@ -1,2 +1,4 @@
 /docker/*.sh text eol=lf
 /scripts/*.sh text eol=lf
+*.go text eol=lf
+*.py text eol=lf
