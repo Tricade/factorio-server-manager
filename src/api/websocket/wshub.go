@@ -76,9 +76,6 @@ type wsHub struct {
 	// unregister a client from this hub
 	unregister chan *wsClient
 
-	// run a control message on all registered controlHandler
-	runControl chan WsControls
-
 	// list of all registered controlHandlers
 	controlHandlers map[reflect.Value]controlHandler
 	controlMu       sync.RWMutex
@@ -98,7 +95,6 @@ func init() {
 		rooms:                    make(map[string]*wsRoom),
 		unregister:               make(chan *wsClient),
 		clients:                  make(map[*wsClient]bool),
-		runControl:               make(chan WsControls),
 		controlHandlers:          make(map[reflect.Value]controlHandler),
 		RegisterControlHandler:   make(chan controlHandler),
 		UnregisterControlHandler: make(chan controlHandler),
@@ -231,19 +227,9 @@ func (room *wsRoom) run() {
 				}
 			}
 		case client := <-room.unregister:
-			if _, ok := room.clients[client]; ok {
-				delete(room.clients, client)
-				// FIXME when more rooms are used, remove empty rooms.
-				// Since we only have a few rooms at the same time, just keep them.
-				// This is code, that will cause a concurrent call on `wsHub.rooms`.
-				// To fix this, move the deletion into the hub.
-				// Be careful to think about race conditions, if a user registered to the room, before room was really deleted.
-				//if len(room.clients) == 0 {
-				//	//remove this room
-				//	delete(room.hub.rooms, room.name)
-				//	return
-				//}
-			}
+			delete(room.clients, client)
+			// Retain the two allow-listed rooms. Recreating one here could
+			// race producers holding a room reference and abandon their sends.
 		case message := <-room.send:
 			for client := range room.clients {
 				if !client.maySubscribeRoom(room.name) {

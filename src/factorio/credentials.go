@@ -67,8 +67,7 @@ func (credentials *Credentials) Load() (bool, error) {
 }
 
 func (credentials *Credentials) Del() error {
-	var err error
-	err = os.Remove(credentialsFilePath())
+	err := os.Remove(credentialsFilePath())
 	if err != nil {
 		log.Printf("error delete the credentialfile: %s", err)
 		return err

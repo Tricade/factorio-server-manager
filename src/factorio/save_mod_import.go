@@ -63,7 +63,7 @@ func ImportModsFromSave(saveName string) (SaveModImportResult, error) {
 		return SaveModImportResult{}, fmt.Errorf("load Factorio Mod Portal credentials: %w", err)
 	}
 	if !authenticated {
-		return SaveModImportResult{}, errors.New("Factorio Mod Portal authentication is required to import mods from a save")
+		return SaveModImportResult{}, errors.New("the Factorio Mod Portal requires authentication to import mods from a save")
 	}
 
 	// Keep the executable and its built-in data stable while Factorio inspects
@@ -128,7 +128,7 @@ func replaceModsFromSave(factorioDirectory, destination string, requested []Mod,
 			continue
 		}
 		if isSpaceAgeFeatureMod(mod.Name) {
-			return SaveModImportResult{}, fmt.Errorf("Space Age feature %s is not available in this Factorio installation", mod.Name)
+			return SaveModImportResult{}, fmt.Errorf("the Space Age feature %s is not available in this Factorio installation", mod.Name)
 		}
 		if err := installPortal(&staged, mod); err != nil {
 			reason, canSkip := saveModImportSkipReason(err)
@@ -249,7 +249,7 @@ func isSpaceAgeFeatureMod(name string) bool {
 }
 
 func installSaveModFromPortal(mods *Mods, requested Mod) error {
-	details, err, statusCode := ModPortalModDetails(requested.Name)
+	details, statusCode, err := ModPortalModDetails(requested.Name)
 	if statusCode == http.StatusNotFound || statusCode == http.StatusGone {
 		return fmt.Errorf("%w: Mod Portal metadata returned HTTP %d", errModPortalReleaseUnavailable, statusCode)
 	}

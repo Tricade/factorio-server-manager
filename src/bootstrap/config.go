@@ -137,7 +137,8 @@ func (config *Config) updateConfigFile() {
 		dbFileDir := filepath.Dir(conf.DatabaseFile)
 		conf.SQLiteDatabaseFile = filepath.Join(dbFileDir, "sqlite.db")
 
-		MigrateLevelDBToSqlite(conf.DatabaseFile, conf.SQLiteDatabaseFile)
+		err = MigrateLevelDBToSqlite(conf.DatabaseFile, conf.SQLiteDatabaseFile)
+		failOnError(err, "Error migrating legacy users; the source database has been retained")
 
 		// remove old db name
 		conf.DatabaseFile = ""

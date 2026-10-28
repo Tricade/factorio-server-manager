@@ -9,7 +9,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -391,13 +390,4 @@ func readModStartupLocale(directory, kind string, index int) (string, error) {
 		return "", fmt.Errorf("localized setting %s is invalid UTF-8", kind)
 	}
 	return strings.TrimSpace(string(contents)), nil
-}
-
-func sortedModStartupSettingNames(evaluation modStartupSettingsEvaluation) []string {
-	names := make([]string, 0, len(evaluation.Settings))
-	for _, setting := range evaluation.Settings {
-		names = append(names, setting.Setting.Name)
-	}
-	sort.Strings(names)
-	return names
 }

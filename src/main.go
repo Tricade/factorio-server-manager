@@ -28,18 +28,8 @@ func main() {
 	// get the all configs based on the flags
 	config := bootstrap.NewConfig(os.Args[1:])
 
-	// setup the required files for the mods
-	factorio.ModStartUp()
-
-	// Initialize Factorio Server struct
-	err := factorio.NewFactorioServer()
-	if err != nil {
-		log.Printf("Error occurred during Server initialization: %v\n", err)
-		return
-	}
-	if err := factorio.InitializeProfiles(); err != nil {
-		log.Printf("Error initializing Factorio profiles: %v\n", err)
-		return
+	if exitCode := initializeManager(factorio.ModStartUp, factorio.NewFactorioServer, factorio.InitializeProfiles); exitCode != 0 {
+		os.Exit(exitCode)
 	}
 	factorio.StartConfiguredAutostart()
 	factorio.StartMapSnapshotScheduler()
@@ -86,6 +76,24 @@ func main() {
 		shutdownFactorioServer(factorioShutdownTimeout)
 	}
 
+}
+
+func initializeManager(prepareMods, initializeServer, initializeProfiles func() error) int {
+	steps := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "mod preparation", run: prepareMods},
+		{name: "Factorio server initialization", run: initializeServer},
+		{name: "profile initialization", run: initializeProfiles},
+	}
+	for _, step := range steps {
+		if err := step.run(); err != nil {
+			log.Printf("Startup failed during %s: %v", step.name, err)
+			return 1
+		}
+	}
+	return 0
 }
 
 func shutdownHTTPServer(server *http.Server) {

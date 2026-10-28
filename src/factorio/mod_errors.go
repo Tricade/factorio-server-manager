@@ -1,6 +1,8 @@
 package factorio
 
-import "errors"
+import (
+	"errors"
+)
 
 var (
 	errModPortalReleaseUnavailable = errors.New("requested mod release is unavailable")

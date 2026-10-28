@@ -81,7 +81,7 @@ func TestMain(m *testing.M) {
 		}
 		integrationCredentialsAvailable = load
 		if !load && os.Getenv("factorio_username") != "" && os.Getenv("factorio_password") != "" {
-			err, _ = factorio.FactorioLogin(os.Getenv("factorio_username"), os.Getenv("factorio_password"))
+			_, err = factorio.FactorioLogin(os.Getenv("factorio_username"), os.Getenv("factorio_password"))
 			if err != nil {
 				log.Printf("Error logging in into factorio: %s", err)
 			} else {

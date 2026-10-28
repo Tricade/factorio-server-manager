@@ -145,13 +145,18 @@ func (modInfoList *ModInfoList) deleteMod(modName string) error {
 		if mod.Name == modName {
 			filePath := filepath.Join(modInfoList.Destination, mod.FileName)
 
-			FileLock.LockW(filePath)
+			if err := FileLock.LockW(filePath); err != nil {
+				return fmt.Errorf("lock mod archive for deletion: %w", err)
+			}
 			//delete mod
 			err = os.Remove(filePath)
-			FileLock.Unlock(filePath)
+			unlockErr := FileLock.Unlock(filePath)
 			if err != nil {
 				log.Printf("ModInfoList ... error when deleting mod: %s", err)
 				return err
+			}
+			if unlockErr != nil {
+				return fmt.Errorf("unlock deleted mod archive: %w", unlockErr)
 			}
 
 			//reload mod-list
@@ -269,11 +274,16 @@ func (modInfoList *ModInfoList) createModWithLimit(modName string, fileName stri
 		return fmt.Errorf("%w: downloaded mod metadata names %q, expected %q", errModArchiveIdentityMismatch, stagedInfo.Name, modName)
 	}
 
-	FileLock.LockW(filePath)
+	if err := FileLock.LockW(filePath); err != nil {
+		return fmt.Errorf("lock mod archive for replacement: %w", err)
+	}
 	err = replaceFileWithRollback(temporaryPath, filePath)
-	FileLock.Unlock(filePath)
+	unlockErr := FileLock.Unlock(filePath)
 	if err != nil {
 		return err
+	}
+	if unlockErr != nil {
+		return fmt.Errorf("unlock replaced mod archive: %w", unlockErr)
 	}
 
 	//reload the list

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -269,6 +270,21 @@ func TestMapSnapshotRenderBoundsRejectsIncompleteOrOutOfRangeViews(t *testing.T)
 	assert.Error(t, err)
 }
 
+func TestMapSnapshotRenderBoundsRejectsChunkCoordinatesOutsideTileLimit(t *testing.T) {
+	_, _, _, _, err := mapSnapshotRenderTileBounds(mapSnapshotExporterSurface{
+		MinX: maximumMapSnapshotCoordinate, MinY: 0,
+		MaxX: maximumMapSnapshotCoordinate, MaxY: 0,
+	})
+	assert.Error(t, err, "chunk coordinates must be bounded before conversion to tile coordinates")
+}
+
+func TestMapSnapshotRenderBoundsRejectsInvertedChunkBounds(t *testing.T) {
+	_, _, _, _, err := mapSnapshotRenderTileBounds(mapSnapshotExporterSurface{
+		MinX: 2, MinY: 0, MaxX: 1, MaxY: 0,
+	})
+	assert.Error(t, err, "inverted source bounds must not produce render geometry")
+}
+
 func TestMapSnapshotManifestAcceptsFactorioEmptyTableEncoding(t *testing.T) {
 	var manifest mapSnapshotExporterManifest
 	require.NoError(t, json.Unmarshal([]byte(`{"schema_version":1,"game_tick":1,"game_version":"2.1.14","force":"player","players":{},"surfaces":{}}`), &manifest))
@@ -354,6 +370,37 @@ func TestPersistedMapSnapshotIsProfileScopedAndReadable(t *testing.T) {
 	assert.Equal(t, 2, snapshot.Players[2].Rank, "equal playtimes share a rank")
 	assert.FileExists(t, filepath.Join(root, profile.ID, "surface-1.png"))
 	assert.Equal(t, append(entityJSON, '\n'), mustReadMapSnapshotTestFile(t, filepath.Join(root, profile.ID, "surface-1-entities.jsonl")))
+}
+
+func TestActivateMapSnapshotDirectoryPreservesInterruptedRecoveryOnFailure(t *testing.T) {
+	root := t.TempDir()
+	originalRoot := mapSnapshotRootPath
+	originalRename := mapSnapshotRename
+	mapSnapshotRootPath = func() string { return root }
+	t.Cleanup(func() {
+		mapSnapshotRootPath = originalRoot
+		mapSnapshotRename = originalRename
+	})
+
+	profileID := "0123456789abcdef"
+	backup := filepath.Join(root, profileID+".previous")
+	require.NoError(t, os.MkdirAll(backup, 0700))
+	recoveryData := []byte("previous snapshot")
+	require.NoError(t, os.WriteFile(filepath.Join(backup, "recovery-marker"), recoveryData, 0600))
+	stage := filepath.Join(root, ".map-snapshot-stage")
+	require.NoError(t, os.MkdirAll(stage, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(stage, "new-marker"), []byte("new snapshot"), 0600))
+
+	mapSnapshotRename = func(old, new string) error {
+		if old == stage {
+			return errors.New("injected activation failure")
+		}
+		return os.Rename(old, new)
+	}
+
+	err := activateMapSnapshotDirectory(profileID, stage)
+	require.Error(t, err)
+	assert.Equal(t, recoveryData, mustReadMapSnapshotTestFile(t, filepath.Join(root, profileID, "recovery-marker")))
 }
 
 func TestMapSnapshotEntityDatasetValidationAndCanonicalCopy(t *testing.T) {
