@@ -309,16 +309,6 @@ func (a *Auth) deleteUser(username string) error {
 	})
 }
 
-func (a *Auth) hasUser(username string) (bool, error) {
-	var count int64
-	result := a.db.Model(&User{}).Where(&User{Username: username}).Count(&count)
-	if result.Error != nil {
-		log.Printf("Error checking if user exists in database: %s", result.Error)
-		return false, result.Error
-	}
-	return count == 1, nil
-}
-
 func (a *Auth) getUser(username string) (User, error) {
 	var user User
 	result := a.db.Model(&User{}).Where(&User{Username: username}).Take(&user)

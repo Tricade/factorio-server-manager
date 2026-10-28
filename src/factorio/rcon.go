@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/OpenFactorioServerManager/factorio-server-manager/bootstrap"
-
 	"github.com/OpenFactorioServerManager/rcon"
 )
 
@@ -61,7 +60,7 @@ func (server *Server) runPersistentRCONCommand(command string) (string, error) {
 
 	console := server.getRcon()
 	if console == nil {
-		return "", errors.New("Factorio RCON is not ready")
+		return "", errors.New("the Factorio RCON is not ready")
 	}
 	requestID, err := console.Write(command)
 	if err != nil {

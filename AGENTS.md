@@ -61,9 +61,11 @@ cd src
 go version
 go test ./... -short -count=1
 go vet ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
 go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 cd ..
 python3 scripts/validate-unraid-template.py
+python3 scripts/validate-source-layout.py
 ```
 
 - `go version` must report the version required by `src/go.mod`.
@@ -71,6 +73,8 @@ python3 scripts/validate-unraid-template.py
 - Build `docker/Dockerfile.registry` for production-container changes. Run the mounted-directory, persistence-guard and split-mount checks from `.github/workflows/test-workflow.yml` whenever storage or entrypoint behavior changes.
 - Use `scripts/build-release.ps1` on Windows or `make gen_release` on Linux when packaging changes. Inspect the ZIP contents, executable mode, included documentation and checksums.
 - Add a regression test that fails before each bug fix. Exercise Windows-sensitive file behavior on Windows CI and Linux mount semantics in Docker where applicable.
+- Keep production imperative files at most 500 physical lines and cohesive by responsibility. `scripts/validate-source-layout.py` enforces the size ceiling, not design quality; do not evade it with compressed lines or grandfather exemptions. Tests, generated output, assets and declarative workflows are outside this production-source budget.
+- Read `docs/DEVELOPMENT.md`, `docs/ARCHITECTURE.md` and `docs/API.md` when changing the corresponding boundaries. Keep their route map, state ownership and manual workflows current.
 - A documentation-only change may use the directly relevant validators locally, but the pull request still waits for the complete required CI matrix. Do not merge with pending or failing checks.
 
 ## Release discipline

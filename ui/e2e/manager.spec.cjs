@@ -166,6 +166,80 @@ test("failed settings save preserves the draft", async ({page}) => {
     await expect(page.getByRole("button", {name: "Discard changes", exact: true})).toBeEnabled();
 });
 
+test("nested API failures use safe toast text and keep the application shell usable", async ({page}) => {
+    const privateDetail = "synthetic-private-backend-detail";
+    await page.route("**/api/settings/update", route => route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({error: {message: privateDetail, details: privateDetail}})
+    }));
+    await page.goto("/server-settings");
+    const name = page.getByRole("textbox", {name: "Name", exact: true});
+    await expect(name).toBeEnabled();
+    await name.fill("Structured error browser test");
+    await page.getByRole("button", {name: "Save changes", exact: true}).click();
+
+    await expect(page.locator(".ui-toast")).toContainText("The request could not be completed.");
+    await expect(page.getByRole("heading", {level: 1, name: "Server settings"})).toBeVisible();
+    await expect(name).toHaveValue("Structured error browser test");
+    await expect(page.locator("body")).not.toContainText(privateDetail);
+});
+
+test("a successful mod upload with a failed list refresh keeps the tab mounted and offers retry", async ({page}) => {
+    let uploadRequestStarted = false;
+    let uploadCommittedResolve;
+    const uploadCommitted = new Promise(resolve => { uploadCommittedResolve = resolve; });
+    let refreshFailureUsed = false;
+    await page.route("**/api/mods/upload", async route => {
+        uploadRequestStarted = true;
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({uploaded: true})
+        });
+        uploadCommittedResolve();
+    });
+    await page.route("**/api/mods/list", async route => {
+        if (uploadRequestStarted) {
+            // A refresh request can be observed as soon as the POST response
+            // is delivered. Wait for its successful commit before failing one.
+            await uploadCommitted;
+            if (!refreshFailureUsed) {
+                refreshFailureUsed = true;
+                return route.fulfill({status: 503, contentType: "text/plain", body: "Synthetic list refresh unavailable"});
+            }
+        }
+        return route.continue();
+    });
+    await page.goto("/mods");
+    await expect(page.getByRole("heading", {level: 1, name: "Mods & mod packs"})).toBeVisible();
+    await expect(page.locator(".ui-profile-switcher strong")).toHaveText("Demo factory");
+    await expect(page.getByText("No mods in this set", {exact: true})).toBeVisible();
+    const uploadTab = page.getByRole("tab", {name: "Upload archive"});
+    await uploadTab.click();
+    const file = page.locator('input[type="file"]');
+    await file.setInputFiles({name: "synthetic-mod.zip", mimeType: "application/zip", buffer: Buffer.from("synthetic archive")});
+    await page.getByRole("button", {name: "Upload mod", exact: true}).click();
+
+    await expect(page.locator(".ui-toast")).toContainText("The change was saved, but the latest mod data could not be loaded.");
+    await expect(page.getByText("Installed mods could not be refreshed. Use Retry to load the latest list.", {exact: true})).toBeVisible();
+    await expect(page.getByRole("button", {name: "Retry", exact: true})).toBeEnabled();
+    await expect(uploadTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tabpanel")).toContainText("Choose a mod archive…");
+    await expect(file).toBeDisabled();
+    await expect(page.getByRole("button", {name: "Upload mod", exact: true})).toBeDisabled();
+    if (process.env.FSM_CAPTURE_MODS_RETRY_SCREENSHOT === "1") {
+        await page.screenshot({path: "screenshots/mods-retry.png"});
+    }
+
+    await page.getByRole("button", {name: "Retry", exact: true}).click();
+    await expect(page.getByText("Installed mods could not be refreshed. Use Retry to load the latest list.", {exact: true})).toHaveCount(0);
+    await expect(uploadTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tabpanel")).toContainText("Choose a mod archive…");
+    await expect(file).toBeEnabled();
+    await expect(page.getByRole("button", {name: "Upload mod", exact: true})).toBeEnabled();
+});
+
 test("a failed log request can be retried without reloading the application", async ({page}) => {
     await page.route("**/api/log/tail**", route => route.fulfill({status: 503, contentType: "text/plain", body: "Unavailable"}));
     await page.goto("/logs");

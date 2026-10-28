@@ -45,10 +45,10 @@ type isolatedFactorioPlayerData struct {
 // process, and the complete workspace is removed before this function returns.
 func discoverSaveModsWithFactorio(savePath, factorioDirectory string, credentials Credentials, runner saveModSyncRunner) ([]Mod, error) {
 	if runner == nil {
-		return nil, errors.New("Factorio save-mod inspector is not configured")
+		return nil, errors.New("the Factorio save-mod inspector is not configured")
 	}
 	if strings.TrimSpace(credentials.Username) == "" || strings.TrimSpace(credentials.Userkey) == "" {
-		return nil, errors.New("Factorio Mod Portal authentication is required to import mods from a save")
+		return nil, errors.New("the Factorio Mod Portal authentication is required to import mods from a save")
 	}
 	if err := ValidateSaveArchive(savePath); err != nil {
 		return nil, fmt.Errorf("validate save before mod inspection: %w", err)
@@ -175,7 +175,7 @@ func parseSynchronizedSaveModVersion(value string) (Version, error) {
 func writeIsolatedFactorioConfig(path, factorioDirectory, writeDataDirectory string) error {
 	for _, value := range []string{factorioDirectory, writeDataDirectory} {
 		if strings.ContainsAny(value, "\r\n") {
-			return errors.New("Factorio path contains a line break")
+			return errors.New("the Factorio path contains a line break")
 		}
 	}
 	readData := filepath.ToSlash(filepath.Join(factorioDirectory, "data"))

@@ -2,7 +2,9 @@ package factorio
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 
@@ -36,19 +38,22 @@ func tailAndRedactLog(path string, limit int) ([]string, error) {
 	ring := make([]string, limit)
 	count := 0
 	next := 0
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if isManagerRCONConnectionLog(line) {
-			continue
+	reader := bufio.NewReaderSize(file, 64*1024)
+	for {
+		line, readErr := readBoundedLogLine(reader, 1024*1024)
+		if line != "" || readErr == nil {
+			if !isManagerRCONConnectionLog(line) {
+				ring[next] = redactLogLine(line)
+				next = (next + 1) % limit
+				count++
+			}
 		}
-		ring[next] = redactLogLine(line)
-		next = (next + 1) % limit
-		count++
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read Factorio log: %w", err)
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("read Factorio log: %w", readErr)
+		}
 	}
 
 	resultCount := count

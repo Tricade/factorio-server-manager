@@ -103,7 +103,7 @@ func (modPackMap *ModPackMap) CreateModPack(modPackName string) error {
 	config := bootstrap.GetConfig()
 	modPackFolder := filepath.Join(config.FactorioModPackDir, modPackName)
 
-	if modPackMap.CheckModPackExists(modPackName) == true {
+	if modPackMap.CheckModPackExists(modPackName) {
 		log.Printf("ModPack %s already existis", modPackName)
 		return errors.New("ModPack " + modPackName + " already exists, please choose a different name")
 	}
@@ -143,7 +143,7 @@ func (modPackMap *ModPackMap) CreateEmptyModPack(packName string) error {
 	config := bootstrap.GetConfig()
 	modPackFolder := filepath.Join(config.FactorioModPackDir, packName)
 
-	if modPackMap.CheckModPackExists(packName) == true {
+	if modPackMap.CheckModPackExists(packName) {
 		log.Printf("ModPack %s already existis", packName)
 		return errors.New("ModPack " + packName + " already exists, please choose a different name")
 	}

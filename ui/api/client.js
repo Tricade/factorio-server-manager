@@ -1,4 +1,5 @@
 import Axios from "axios";
+import {errorMessage, plainTextMessage} from "./messageText.cjs";
 
 export const authenticationRequiredEvent = "fsm:authentication-required";
 
@@ -13,7 +14,7 @@ client.interceptors.response.use(res => res, err => {
     if (err.code === "ERR_CANCELED") return Promise.reject(err);
     const status = err.response?.status;
     if (!err.response) {
-        const message = err.config?.networkErrorMessage || "The control service is not reachable. Check the connection.";
+        const message = plainTextMessage(err.config?.networkErrorMessage, "The control service is not reachable. Check the connection.");
         err.userMessage = message;
         window.flash(message, "red");
     } else if (status === 401) {
@@ -21,10 +22,7 @@ client.interceptors.response.use(res => res, err => {
     } else if(status === 502) {
         window.flash("Service not available", "red");
     } else {
-        const value = typeof err.response.data === "string"
-            ? err.response.data
-            : err.response.data?.error || err.response.data?.message;
-        const message = typeof value === "string" && value.trim() ? value : "The request could not be completed.";
+        const message = errorMessage(err);
         window.flash(message, "red");
     }
     return Promise.reject(err);

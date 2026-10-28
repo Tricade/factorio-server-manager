@@ -6,6 +6,9 @@ import modsResource from "../../../../api/resources/mods";
 import Button from "../../../components/Button";
 import Label from "../../../components/Label";
 import Error from "../../../components/Error";
+import modMutationFeedback from "./modMutationFeedback.cjs";
+
+const {refreshAfterMutation, refreshFailureMessage} = modMutationFeedback;
 
 const UploadMod = ({refetchInstalledMods}) => {
     const [fileName, setFileName] = useState("Choose a mod archive…");
@@ -17,10 +20,10 @@ const UploadMod = ({refetchInstalledMods}) => {
         setIsUploading(true);
         try {
             await modsResource.upload(data.mod_file[0]);
-            await refetchInstalledMods();
             reset();
             setFileName("Choose a mod archive…");
-            window.flash("Mod archive uploaded.", "green");
+            const refreshed = await refreshAfterMutation(refetchInstalledMods);
+            window.flash(refreshed ? "Mod archive uploaded." : refreshFailureMessage, refreshed ? "green" : "yellow");
         } catch (error) {
             window.flash(error?.response?.data || "Mod could not be uploaded.", "red");
         } finally {

@@ -10,6 +10,10 @@ import Button from "../components/Button";
 import ScopeBadge from "../components/ScopeBadge";
 
 const humanize = value => value.replace(/[_-]/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
+const loadErrorText = error => {
+    const value = error?.response?.data?.error || error?.response?.data?.message || error?.response?.data || error?.message;
+    return typeof value === "string" && value.trim() ? value.trim() : "Game configuration could not be loaded.";
+};
 
 const GameSettings = () => {
     const [settingsCategories, setSettingsCategories] = useState(null);
@@ -23,7 +27,7 @@ const GameSettings = () => {
             const result = await settingsResource.game.list();
             setSettingsCategories(result || {});
         } catch (error) {
-            const message = error?.response?.data || "Game configuration could not be loaded.";
+            const message = loadErrorText(error);
             setLoadError(message);
             setSettingsCategories(null);
             window.flash(message, "red");

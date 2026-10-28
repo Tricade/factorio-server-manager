@@ -49,6 +49,16 @@ const ProfileContextBar = ({serverStatus, refreshServerStatus, canManage = false
 
     const busy = !statusKnown || isStarting || isStopping || isKilling || isRefreshingStatus || serverStatus?.stopping;
 
+    const refreshStatusAfterAction = async action => {
+        try {
+            await refreshServerStatus?.();
+            return true;
+        } catch (error) {
+            window.flash(`${action} completed, but Factorio's current status could not be refreshed.`, "yellow");
+            return false;
+        }
+    };
+
     const retryServerStatus = async () => {
         setIsRefreshingStatus(true);
         try {
@@ -68,7 +78,8 @@ const ProfileContextBar = ({serverStatus, refreshServerStatus, canManage = false
                 Number(activeProfile.port || 34197),
                 activeProfile.selected_save
             );
-            await Promise.all([refreshServerStatus?.(), refreshProfiles().catch(() => undefined)]);
+            await refreshProfiles().catch(() => undefined);
+            if (!await refreshStatusAfterAction("Server start")) return;
             window.flash("Factorio server started.", "green");
         } catch (startError) {
             window.flash(startError?.response?.data || "Factorio server could not be started.", "red");
@@ -81,7 +92,7 @@ const ProfileContextBar = ({serverStatus, refreshServerStatus, canManage = false
         setIsStopping(true);
         try {
             await server.stop();
-            await refreshServerStatus?.();
+            if (!await refreshStatusAfterAction("Save and stop")) return;
             window.flash("Save and stop requested.", "green");
         } catch (stopError) {
             window.flash(stopError?.response?.data || "Factorio server could not be stopped.", "red");
@@ -94,7 +105,7 @@ const ProfileContextBar = ({serverStatus, refreshServerStatus, canManage = false
         setIsKilling(true);
         try {
             await server.kill();
-            await refreshServerStatus?.();
+            if (!await refreshStatusAfterAction("Force stop")) return;
             window.flash("Factorio process was force-stopped.", "green");
         } finally {
             setIsKilling(false);

@@ -1,5 +1,7 @@
 # Project quality review — 2026-10-17
 
+This historical review is retained. See the [2026-10-28 maintainability review](QUALITY-REVIEW-2026-10-28.md) for the current source decomposition, additional failure-path corrections, developer references and measured verification boundaries.
+
 This review started from `main` at `d74221f`, with application version 0.20.0. The follow-up work below addresses its five outstanding items. It covers runtime boundaries, HTTP handlers, authentication, profile/UI state, archives, locking, dependencies, build configuration, tests and documentation. It does not publish a release, change deployed installations or certify that every possible workflow is defect-free.
 
 The main weaknesses found were inconsistent behavior between old and new code paths, asynchronous UI state ownership, and gaps in regression coverage. The fixes preserve the one-server model, existing profiles, saved game versions, credentials, storage paths and mount layouts.

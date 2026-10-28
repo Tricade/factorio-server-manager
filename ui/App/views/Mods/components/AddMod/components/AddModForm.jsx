@@ -11,6 +11,9 @@ import Error from "../../../../../components/Error";
 import SelectVersionForm from "./SelectVersionForm";
 import DependencyInstallForm from "./DependencyInstallForm";
 import modPackHelpers from "../../modPackMerge.cjs";
+import modMutationFeedback from "../../modMutationFeedback.cjs";
+
+const {refreshAfterMutation, refreshFailureMessage} = modMutationFeedback;
 
 const AddModForm = ({setIsFactorioAuthenticated, fuse, factorioVersion, refetchInstalledMods}) => {
     const {register, watch, setValue, handleSubmit, formState: {errors}} = useForm();
@@ -126,9 +129,11 @@ const AddModForm = ({setIsFactorioAuthenticated, fuse, factorioVersion, refetchI
         setIsInstallingPlan(true);
         try {
             await modsResource.portal.installResolved(selectedMod.item.name, selectedRelease.version, selectedOptional);
-            await refetchInstalledMods();
             setIsDependencyModalOpen(false);
-            window.flash(`${selectedMod.item.title} and its selected dependencies were installed.`, "green");
+            const refreshed = await refreshAfterMutation(refetchInstalledMods);
+            window.flash(refreshed
+                ? `${selectedMod.item.title} and its selected dependencies were installed.`
+                : refreshFailureMessage, refreshed ? "green" : "yellow");
         } catch (error) {
             const message = error?.response?.data?.error || error?.response?.data || "Mod set could not be installed.";
             window.flash(message, "red");

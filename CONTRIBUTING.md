@@ -4,6 +4,8 @@ Work from `main` on a focused branch and preserve existing installations. The ru
 
 ## Source map
 
+For the complete manual workflow, read [Development](docs/DEVELOPMENT.md), [Architecture and state ownership](docs/ARCHITECTURE.md), and the [HTTP/WebSocket reference](docs/API.md). These guides complement the quick source map below.
+
 | Area | Location | Responsibility |
 | --- | --- | --- |
 | Application and authentication | `src/main.go`, `src/bootstrap/`, `src/api/auth.go` | Bootstrap, persistent accounts, sessions, graceful shutdown |
@@ -32,16 +34,18 @@ cd src
 go version
 go test ./... -short -count=1
 go vet ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
 go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 cd ..
 git diff --check
+python3 scripts/validate-source-layout.py
 ```
 
 On Windows, use `python` if `python3` is unavailable. `-short` avoids credential-dependent Mod Portal integration tests. Clear any production `FSM_*` environment variables before tests: the API harness can use explicitly supplied paths. Never run a suite against production saves or manager storage.
 
 Run a single UI file with `node --test ui/tests/profileContext.test.cjs`; run a Go subset from `src/` with `go test ./api -short -run TestDirectoryZip -count=1`. To inspect coverage, use `go test ./... -short -count=1 -coverprofile=../build/coverage.out` and `go tool cover -html=../build/coverage.out` after creating the ignored `build/` directory. Quote those complete flag arguments in PowerShell.
 
-Concurrency changes also require race checks on a supported C toolchain. CI runs Linux race checks for additive mod packs, optional-dependency preferences, file locks, the WebSocket hub and startup/shutdown reservations. For a local lifecycle or lock/hub change:
+Concurrency changes also require race checks on a supported C toolchain. CI runs the complete Linux short suite with `go test ./... -race -short -count=1`. During iteration on a local lifecycle or lock/hub change, start with focused checks:
 
 ```sh
 cd src

@@ -296,11 +296,13 @@ cd src
 go version
 go test ./... -short -count=1
 go vet ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
 go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 go build -o ../build/factorio-server-manager .
 cd ..
 python3 -m unittest discover -s scripts/tests -v
 python3 scripts/validate-unraid-template.py
+python3 scripts/validate-source-layout.py
 ```
 
 Use an `.exe` suffix for the native binary on Windows. `app/` is generated entirely from `ui/` by `npm run build`; it is not source-controlled. The [contributor guide](CONTRIBUTING.md) describes isolated development data, targeted tests and checks that require a real Factorio engine.
@@ -325,7 +327,7 @@ This fork releases from `main`. The historical upstream `develop` branch has a d
 4. Update `CHANGELOG.md`, documentation and screenshots when behavior changes.
 5. Open a pull request against `main` and merge only after CI passes.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the source map and required checks. The [quality review](docs/QUALITY-REVIEW.md) records the latest audit's concrete fixes and remaining verification gaps; it is not a guarantee of exhaustive coverage.
+For manual development, start with the [development guide](docs/DEVELOPMENT.md), [architecture/state ownership](docs/ARCHITECTURE.md), [HTTP/WebSocket reference](docs/API.md), and [CONTRIBUTING.md](CONTRIBUTING.md). The [latest quality review](docs/QUALITY-REVIEW-2026-10-28.md) records concrete corrections, measured coverage and remaining verification boundaries. Production imperative files have a CI-enforced 500-line ceiling; that is a maintenance guard, not a guarantee of perfect design or exhaustive coverage.
 
 ## Origin and attribution
 

@@ -8,6 +8,9 @@ import Modal from "../../../components/Modal";
 import Label from "../../../components/Label";
 import Input from "../../../components/Input";
 import Error from "../../../components/Error";
+import modMutationFeedback from "./modMutationFeedback.cjs";
+
+const {refreshAfterMutation, refreshFailureMessage} = modMutationFeedback;
 
 const CreateModPack = ({onSuccess}) => {
     const [isCreating, setIsCreating] = useState(false);
@@ -18,10 +21,10 @@ const CreateModPack = ({onSuccess}) => {
         setIsCreating(true);
         try {
             await modsResource.packs.create(data.name);
-            await onSuccess();
             reset();
             setIsOpen(false);
-            window.flash(`${data.name} created.`, "green");
+            const refreshed = await refreshAfterMutation(onSuccess);
+            window.flash(refreshed ? `${data.name} created.` : refreshFailureMessage, refreshed ? "green" : "yellow");
         } catch (error) {
             window.flash(error?.response?.data || "Mod pack could not be created.", "red");
         } finally {

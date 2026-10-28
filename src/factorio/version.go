@@ -129,25 +129,7 @@ func (v Version) Compatible(b Version, op string) bool {
 	}
 }
 
-// version24 is the 24-bit (8, 8, 8) version structure
-type version24 Version
-
-func (v version24) MarshalBinary() (data []byte, err error) {
-	data = []byte{byte(v[0]), byte(v[1]), byte(v[2])}
-	return data, nil
-}
-
-func (v *version24) UnmarshalBinary(data []byte) error {
-	if len(data) < 3 {
-		return errors.New("version24.UnmarshalBinary: too few bytes")
-	}
-	v[0] = uint(data[0])
-	v[1] = uint(data[1])
-	v[2] = uint(data[2])
-	return nil
-}
-
-// version24 is a 48-bit (16, 16, 16) optimized version structure
+// version48 is the 48-bit optimized version structure used by legacy saves.
 type version48 Version
 
 func (v *version48) decodeFrom(r io.Reader, game Version) error {

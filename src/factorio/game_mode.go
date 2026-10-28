@@ -74,7 +74,7 @@ func SetGameMode(mode GameMode) (GameModeStatus, error) {
 		return GameModeStatus{}, err
 	}
 	if mode == GameModeSpaceAge && !status.SpaceAgeAvailable {
-		return status, errors.New("Space Age data is not available in this Factorio installation")
+		return status, errors.New("space Age data is not available in this Factorio installation")
 	}
 
 	enabled := []string{}

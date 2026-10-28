@@ -247,7 +247,7 @@ func (document modSettingsDocument) encode() ([]byte, error) {
 	var versionBytes [8]byte
 	for index, part := range document.Version {
 		if part > math.MaxUint16 {
-			return nil, fmt.Errorf("Factorio version component %d exceeds uint16", part)
+			return nil, fmt.Errorf("the Factorio version component %d exceeds uint16", part)
 		}
 		binary.LittleEndian.PutUint16(versionBytes[index*2:index*2+2], uint16(part))
 	}

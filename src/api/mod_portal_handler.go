@@ -27,7 +27,7 @@ func ModPortalListModsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
 	var statusCode int
-	resp, err, statusCode = factorio.ModPortalList()
+	resp, statusCode, err = factorio.ModPortalList()
 	w.WriteHeader(statusCode)
 	if err != nil {
 		resp = fmt.Sprintf("Error in listing mods from mod portal: %s\nresponse: %+v", err, resp)
@@ -51,7 +51,7 @@ func ModPortalModInfoHandler(w http.ResponseWriter, r *http.Request) {
 	modId := vars["mod"]
 
 	var statusCode int
-	resp, err, statusCode = factorio.ModPortalModDetails(modId)
+	resp, statusCode, err = factorio.ModPortalModDetails(modId)
 
 	if err != nil {
 		resp = fmt.Sprintf("Error in getting mod details from mod portal: %s", err)
@@ -166,7 +166,7 @@ func ModPortalLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err, statusCode := factorio.FactorioLogin(data.Username, data.Password)
+	statusCode, err := factorio.FactorioLogin(data.Username, data.Password)
 	w.WriteHeader(statusCode)
 	if err != nil {
 		resp = fmt.Sprintf("Error trying to login into Factorio: %s", err)
@@ -247,7 +247,7 @@ func ModPortalInstallMultipleHandler(w http.ResponseWriter, r *http.Request) {
 		if datum.Name == "base" {
 			continue
 		}
-		details, err, statusCode := factorio.ModPortalModDetails(datum.Name)
+		details, statusCode, err := factorio.ModPortalModDetails(datum.Name)
 		if err != nil || statusCode != http.StatusOK {
 			resp = fmt.Sprintf("Error in getting mod details from mod portal: %s", err)
 			log.Println(resp)

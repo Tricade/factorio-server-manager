@@ -151,11 +151,16 @@ func (mods *Mods) createModWithLimit(modName string, fileName string, fileRc io.
 			continue
 		}
 		previousPath := filepath.Join(mods.ModInfoList.Destination, previousFile)
-		FileLock.LockW(previousPath)
+		if err := FileLock.LockW(previousPath); err != nil {
+			return fmt.Errorf("lock previous mod archive %s: %w", previousFile, err)
+		}
 		removeErr := os.Remove(previousPath)
-		FileLock.Unlock(previousPath)
+		unlockErr := FileLock.Unlock(previousPath)
 		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 			return fmt.Errorf("remove previous mod archive %s: %w", previousFile, removeErr)
+		}
+		if unlockErr != nil {
+			return fmt.Errorf("unlock previous mod archive %s: %w", previousFile, unlockErr)
 		}
 	}
 	if err := mods.ModInfoList.listInstalledMods(); err != nil {
@@ -187,7 +192,7 @@ func (mods *Mods) DownloadMod(downloadPath string, filename string, modId string
 		log.Printf("error loading credentials: %s", err)
 		return err
 	}
-	if status == false {
+	if !status {
 		log.Printf("error: credentials are invalid")
 		return errors.New("error: credentials are invalid")
 	}
@@ -317,9 +322,7 @@ func lockActiveModMutation(destination string) (func(), error) {
 }
 
 func (mods *Mods) UpdateMod(modName string, url string, filename string) error {
-	var err error
-
-	err = mods.DownloadMod(url, filename, modName)
+	err := mods.DownloadMod(url, filename, modName)
 	if err != nil {
 		log.Printf("updateMod ... error when downloading the new Mod: %s", err)
 		return err

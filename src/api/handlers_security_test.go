@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,12 +12,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestJSONResponseFileInputKeepsInterfaceDataAsJSON(t *testing.T) {
+	encoded, err := json.Marshal(JSONResponseFileInput{
+		Success: true,
+		Data:    map[string]interface{}{"enabled": true},
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"success":true,"data":{"enabled":true},"error":"","errorkeys":null}`, string(encoded))
+}
+
 func TestReadRequestBodyRejectsOversizedJSON(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/test", strings.NewReader(strings.Repeat("x", int(maximumJSONRequestBodyBytes)+1)))
 	body, _, err := ReadRequestBody(recorder, request)
 	require.Error(t, err)
 	assert.Nil(t, body)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
+}
+
+func TestUpdateGameModeRejectsOversizedRequest(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/server/game-mode", strings.NewReader(strings.Repeat(" ", int(maximumJSONRequestBodyBytes)+1)))
+
+	UpdateGameMode(recorder, request)
+
 	assert.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
 }
 

@@ -20,13 +20,14 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import {useProfiles} from "../context/ProfileContext";
 import ProfileBackupExport from "../components/ProfileBackupExport";
 import BackupRestore from "../components/BackupRestore";
+import {errorMessage} from "../../api/messageText.cjs";
 
 const sourceOptions = [
     {value: "empty", name: "New world (no save)"},
     {value: "clone", name: "Copy the active profile"}
 ];
 
-const profileError = (error, fallback) => error?.response?.data?.error || error?.response?.data || fallback;
+const profileError = (error, fallback) => errorMessage(error, fallback);
 
 const Profiles = ({serverStatus, refreshServerStatus, canManage = false}) => {
     const {state, activeProfile, isLoading, applyProfileState, refreshProfiles} = useProfiles();
@@ -97,10 +98,17 @@ const Profiles = ({serverStatus, refreshServerStatus, canManage = false}) => {
         setActivating(profile.id);
         try {
             applyProfileState(await profilesResource.activate(profile.id));
-            await refreshServerStatus();
             setEditing(null);
             setPendingProfile(null);
-            window.flash(profile.name + " is active. Factorio remains stopped until you start it.", "green");
+            let statusRefreshed = true;
+            try {
+                await refreshServerStatus();
+            } catch (error) {
+                statusRefreshed = false;
+            }
+            window.flash(statusRefreshed
+                ? profile.name + " is active. Factorio remains stopped until you start it."
+                : profile.name + " is active, but Factorio's current status could not be refreshed.", statusRefreshed ? "green" : "yellow");
             if (continueSetup) navigate(profile.save_count === 0 ? "/saves" : "/");
         } catch (error) {
             window.flash(profileError(error, profile.name + " could not be activated."), "red");

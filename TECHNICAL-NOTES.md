@@ -2,6 +2,8 @@
 
 ## Architecture
 
+The detailed human-maintained references are [development](docs/DEVELOPMENT.md), [architecture/state and locks](docs/ARCHITECTURE.md), and [HTTP/WebSocket contracts](docs/API.md). The [2026-10-28 review](docs/QUALITY-REVIEW-2026-10-28.md) records the responsibility splits, concrete regressions and test limits; existing data layouts and the single-runtime model remain authoritative.
+
 - React single-page interface built with Webpack and served by the Go binary
 - Go backend using Gorilla Mux, SQLite/GORM, WebSocket status events and direct Factorio process control
 - Persistent manager state under `/opt/fsm-data`
@@ -170,9 +172,11 @@ cd src
 go version # must report the patch version required by go.mod
 go test ./... -short -count=1
 go vet ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
 go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 cd ..
 python3 scripts/validate-unraid-template.py
+python3 scripts/validate-source-layout.py
 ```
 
 CI additionally runs Python repository validators, targeted Go race tests, the synthetic browser matrix, mounted-directory transaction tests, a production image build and the required-persistence/split-mount entrypoint checks. Its separate disposable real-engine matrix creates tiny worlds, exercises live RCON/checkpoints and verifies restart/recreation with combined and split persistence. It does not use a Mod Portal account or a private save. `scripts/smoke-new-world.sh` remains a separate opt-in manual check for a disposable installation. See [CONTRIBUTING.md](CONTRIBUTING.md) for both test paths, safety guards and prerequisites.

@@ -14,6 +14,7 @@ import Checkpoints from "./components/Checkpoints";
 import {useProfiles} from "../../context/ProfileContext";
 import ScopeBadge from "../../components/ScopeBadge";
 import EmptyState from "../../components/EmptyState";
+import {errorMessage} from "../../../api/messageText.cjs";
 
 const formatSize = bytes => {
     if (!Number.isFinite(bytes)) return "—";
@@ -37,8 +38,8 @@ const Saves = ({serverStatus, canManage = false}) => {
             setSaves(result || []);
             refreshProfiles().catch(() => undefined);
         } catch (error) {
-            const message = error?.response?.data || "Saves could not be loaded.";
-            setLoadError(typeof message === "string" ? message : "Saves could not be loaded.");
+            const message = errorMessage(error, "Saves could not be loaded.");
+            setLoadError(message);
             window.flash(message, "red");
         } finally {
             setIsLoading(false);

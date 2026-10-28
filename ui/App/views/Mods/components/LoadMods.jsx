@@ -30,7 +30,9 @@ const LoadMods = ({refreshMods}) => {
                 setSaves(availableSaves || []);
                 reset({save: availableSaves?.[0]?.name || ""});
             })
-            .catch(error => window.flash(error?.response?.data || "Save metadata could not be loaded.", "red"));
+            .catch(error => {
+                if (active) window.flash(error?.response?.data || "Save metadata could not be loaded.", "red");
+            });
         return () => { active = false; };
     }, [reset]);
 

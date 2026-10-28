@@ -7,6 +7,9 @@ import ConfirmDialog from "../../../components/ConfirmDialog";
 import Button from "../../../components/Button";
 import ButtonLink from "../../../components/ButtonLink";
 import ModPackMergeDialog from "./ModPackMergeDialog";
+import modMutationFeedback from "./modMutationFeedback.cjs";
+
+const {refreshAfterMutation, refreshFailureMessage} = modMutationFeedback;
 
 const ModPack = ({modPack, reloadModPacks, factorioVersion, reloadMods, profileLocked = false, readOnly = false}) => {
     const [dialog, setDialog] = useState(null);
@@ -14,18 +17,27 @@ const ModPack = ({modPack, reloadModPacks, factorioVersion, reloadMods, profileL
 
     const deleteModPack = async () => {
         await modsResource.packs.delete(modPack.name);
-        await reloadModPacks();
-        window.flash(`${modPack.name} deleted.`, "green");
+        const refreshed = await refreshAfterMutation(reloadModPacks);
+        window.flash(refreshed ? `${modPack.name} deleted.` : refreshFailureMessage, refreshed ? "green" : "yellow");
     };
-    const toggleMod = modName => modsResource.packs.mods.toggle(modPack.name, modName).then(reloadModPacks);
-    const updateMod = version => modsResource.packs.mods.update(modPack.name, version).then(reloadModPacks);
-    const deleteMod = modName => modsResource.packs.mods.delete(modPack.name, modName).then(reloadModPacks);
+    const toggleMod = async modName => {
+        await modsResource.packs.mods.toggle(modPack.name, modName);
+        return {refreshed: await refreshAfterMutation(reloadModPacks)};
+    };
+    const updateMod = async version => {
+        await modsResource.packs.mods.update(modPack.name, version);
+        return {refreshed: await refreshAfterMutation(reloadModPacks)};
+    };
+    const deleteMod = async modName => {
+        await modsResource.packs.mods.delete(modPack.name, modName);
+        return {refreshed: await refreshAfterMutation(reloadModPacks)};
+    };
     const loadModPack = async () => {
         setIsLoading(true);
         try {
             await modsResource.packs.load(modPack.name);
-            await reloadMods();
-            window.flash(`${modPack.name} loaded.`, "green");
+            const refreshed = await refreshAfterMutation(reloadMods);
+            window.flash(refreshed ? `${modPack.name} loaded.` : refreshFailureMessage, refreshed ? "green" : "yellow");
         } finally {
             setIsLoading(false);
         }

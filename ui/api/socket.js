@@ -102,13 +102,17 @@ const disconnect = () => {
 bus.on("log subscribe", () => subscribe("gamelog"));
 bus.on("log unsubscribe", () => unsubscribe("gamelog"));
 bus.on("server status subscribe", () => subscribe("server_status"));
-bus.on("command send", command => {
+const sendCommand = command => {
     if (!sendControl("command", command)) {
         bus.emit("command_error", "Console connection is not ready yet.");
+        return false;
     }
-});
+    return true;
+};
+bus.on("command send", sendCommand);
 
 bus.connect = connect;
 bus.disconnect = disconnect;
+bus.sendCommand = sendCommand;
 
 export default bus;

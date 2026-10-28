@@ -1,67 +1,37 @@
-// use this file only when compiling not windows (all unix systems)
 //go:build !windows
-// +build !windows
 
 package factorio
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"os"
 )
 
-// Stubs for windows-only functions
-
-func (server *Server) Kill() error {
-	stopCheckpointMonitor()
-	server.SetStopping(true)
-	err := server.Cmd.Process.Signal(os.Kill)
-	if err != nil {
-		server.SetStopping(false)
-		if err.Error() == "os: process already finished" {
-			server.SetRunning(false)
-			return err
-		}
-		log.Printf("Error sending SIGKILL to Factorio process: %s", err)
-		return err
-	}
-	log.Printf("Sent SIGKILL to Factorio process. Factorio forced to exit.")
-
-	server.closeRcon()
-
-	return nil
-}
-
-func (server *Server) Stop() error {
-	if !server.requestStop() {
-		return nil
-	}
-	if !server.claimStopSignalIfReady() {
-		log.Printf("Factorio is still starting; safe shutdown is queued until startup completes")
-		return nil
-	}
-	stopCheckpointMonitor()
-	runCleanStopCheckpoint()
-	return server.signalStop()
-}
-
 func (server *Server) signalStop() error {
-	err := server.Cmd.Process.Signal(os.Interrupt)
-	if err != nil {
-		server.SetStopping(false)
-		if err.Error() == "os: process already finished" {
-			server.SetRunning(false)
-			return err
-		}
-		log.Printf("Error sending SIGINT to Factorio process: %s", err)
-		return err
+	serverLifecycleMutex.Lock()
+	defer serverLifecycleMutex.Unlock()
+	stateMutex.RLock()
+	var process *os.Process
+	if server.Cmd != nil {
+		process = server.Cmd.Process
 	}
-	log.Printf("Sent SIGINT to Factorio process. Factorio shutting down...")
-
+	stateMutex.RUnlock()
+	if process == nil {
+		server.SetStopping(false)
+		return errProcessUnavailable
+	}
+	if err := process.Signal(os.Interrupt); err != nil {
+		server.SetStopping(false)
+		if errors.Is(err, os.ErrProcessDone) {
+			server.SetRunning(false)
+		}
+		return fmt.Errorf("send shutdown signal to Factorio process: %w", err)
+	}
+	log.Print("Sent SIGINT to Factorio process; waiting for clean shutdown")
 	server.closeRcon()
-
 	return nil
 }
 
-func (server *Server) checkProcessHealth(text string) {
-	// ignore
-}
+func (server *Server) checkProcessHealth(string) {}

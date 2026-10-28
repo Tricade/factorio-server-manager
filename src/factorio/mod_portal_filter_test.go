@@ -27,7 +27,7 @@ func TestModPortalListRequestsInstalledFactorioLine(t *testing.T) {
 		SetFactorioServer(Server{Version: originalServer.Version, BaseModVersion: originalServer.BaseModVersion})
 	})
 
-	response, err, status := ModPortalList()
+	response, status, err := ModPortalList()
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, status)
 	payload, ok := response.(map[string]interface{})

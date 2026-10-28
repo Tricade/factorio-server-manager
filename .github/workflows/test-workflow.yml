@@ -76,10 +76,9 @@ jobs:
         run: |
           go version | grep -F 'go1.26.10 '
           go test ./... -short -count=1
-          go test ./factorio ./api -race -short -run 'Test(ModPackMerge|MergeModPack|ModPortalPreferences|ModPortalOptionalDefaults)' -count=1
-          go test ./lockfile ./api/websocket -race -short -count=1
-          go test . ./factorio -race -short -run 'Test(Shutdown|StopAlreadyStopped|FailedStartup|InvalidStartupSettings|ParallelStart)' -count=1
+          go test ./... -race -short -count=1
           go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
           go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
       - if: contains(matrix.os, 'windows')
         working-directory: src
@@ -92,6 +91,7 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/tests -v
           python3 scripts/validate-unraid-template.py
+          python3 scripts/validate-source-layout.py
   docker-build:
     needs: [test-npm, test-go, test-unraid-template, test-browser]
     runs-on: ubuntu-latest

@@ -4,6 +4,7 @@ import Modal from "../../../components/Modal";
 import Button from "../../../components/Button";
 import Alert from "../../../components/Alert";
 import helpers from "./modPackMerge.cjs";
+import {errorMessage} from "../../../../api/messageText.cjs";
 
 const ModPackMergeDialog = ({name, isOpen, close, onSuccess, locked}) => {
     const [plan, setPlan] = useState(null);
@@ -20,7 +21,7 @@ const ModPackMergeDialog = ({name, isOpen, close, onSuccess, locked}) => {
         modsResource.packs.previewMerge(name).then(result => {
             if (active) setPlan(result);
         }).catch(failure => {
-            if (active) setError(failure?.response?.data?.error || "The pack could not be checked.");
+            if (active) setError(errorMessage(failure, "The pack could not be checked."));
         }).finally(() => { if (active) setLoading(false); });
         return () => { active = false; };
     }, [name, isOpen, reload]);
@@ -32,7 +33,7 @@ const ModPackMergeDialog = ({name, isOpen, close, onSuccess, locked}) => {
             await modsResource.packs.merge(name, plan.revision);
         } catch (failure) {
             setPlan(null);
-            setError(failure?.response?.data?.error || "The pack could not be added. Review it again before retrying.");
+            setError(errorMessage(failure, "The pack could not be added. Review it again before retrying."));
             setSaving(false);
             return;
         }

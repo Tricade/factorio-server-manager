@@ -207,7 +207,6 @@ func ModUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	resp = fmt.Sprintf(`Could not find mod %s`, modData.Name)
 	log.Println(resp)
 	w.WriteHeader(http.StatusNotFound)
-	return
 }
 
 func ModUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -276,7 +275,7 @@ func ModUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		resp = fmt.Sprintf("The uploaded file wasn't a zip-file, a mod-settings. dat or a mod-info.json")
+		resp = "The uploaded file wasn't a zip-file, a mod-settings. dat or a mod-info.json"
 		log.Println(resp)
 		w.WriteHeader(http.StatusBadRequest)
 		return

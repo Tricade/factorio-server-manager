@@ -58,7 +58,7 @@ func readBoundedBody(reader io.Reader, maximum int64) ([]byte, error) {
 }
 
 // get all mods uploaded to the factorio modPortal
-func ModPortalList() (interface{}, error, int) {
+func ModPortalList() (interface{}, int, error) {
 	snapshot := GetFactorioServer().Snapshot()
 	installedVersion := snapshot.BaseModVersion
 	if installedVersion == "" {
@@ -66,12 +66,12 @@ func ModPortalList() (interface{}, error, int) {
 	}
 	var parsedVersion Version
 	if err := parsedVersion.UnmarshalText([]byte(installedVersion)); err != nil {
-		return "error", fmt.Errorf("parse installed Factorio version for mod search: %w", err), http.StatusInternalServerError
+		return "error", http.StatusInternalServerError, fmt.Errorf("parse installed Factorio version for mod search: %w", err)
 	}
 
 	endpoint, err := url.Parse(modPortalBaseURL + "/api/mods")
 	if err != nil {
-		return "error", err, http.StatusInternalServerError
+		return "error", http.StatusInternalServerError, err
 	}
 	query := endpoint.Query()
 	query.Set("page_size", "max")
@@ -79,75 +79,75 @@ func ModPortalList() (interface{}, error, int) {
 	endpoint.RawQuery = query.Encode()
 	req, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
 	if err != nil {
-		return "error", err, http.StatusInternalServerError
+		return "error", http.StatusInternalServerError, err
 	}
 
 	resp, err := modPortalHTTPClient.Do(req)
 	if err != nil {
-		return "error", err, http.StatusInternalServerError
+		return "error", http.StatusInternalServerError, err
 	}
 	defer resp.Body.Close()
 
 	text, err := readBoundedBody(resp.Body, maximumModPortalListBodyBytes)
 	if err != nil {
-		return "error", err, http.StatusInternalServerError
+		return "error", http.StatusInternalServerError, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New(string(text)), resp.StatusCode
+		return nil, resp.StatusCode, errors.New(string(text))
 	}
 
 	var jsonVal map[string]interface{}
 	err = json.Unmarshal(text, &jsonVal)
 	if err != nil {
-		return "error", err, http.StatusInternalServerError
+		return "error", http.StatusInternalServerError, err
 	}
 	if results, ok := jsonVal["results"].([]interface{}); ok && len(results) > maximumModPortalListResults {
-		return "error", fmt.Errorf("mod portal response contains more than %d results", maximumModPortalListResults), http.StatusBadGateway
+		return "error", http.StatusBadGateway, fmt.Errorf("mod portal response contains more than %d results", maximumModPortalListResults)
 	}
 
 	jsonVal["factorio_version"] = parsedVersion.FactorioLine()
-	return jsonVal, nil, resp.StatusCode
+	return jsonVal, resp.StatusCode, nil
 }
 
 // get the details (mod-info, releases, etc.) from a specific mod from the modPortal
-func ModPortalModDetails(modId string) (ModPortalStruct, error, int) {
+func ModPortalModDetails(modId string) (ModPortalStruct, int, error) {
 	var mod ModPortalStruct
 	if err := ValidatePathElement(modId); err != nil {
-		return mod, err, http.StatusBadRequest
+		return mod, http.StatusBadRequest, err
 	}
 
 	// The full endpoint is required here: the short response deliberately omits
 	// info_json.dependencies, which the install planner needs.
 	req, err := http.NewRequest(http.MethodGet, modPortalBaseURL+"/api/mods/"+url.PathEscape(modId)+"/full", nil)
 	if err != nil {
-		return mod, err, http.StatusInternalServerError
+		return mod, http.StatusInternalServerError, err
 	}
 
 	resp, err := modPortalHTTPClient.Do(req)
 	if err != nil {
-		return mod, err, http.StatusInternalServerError
+		return mod, http.StatusInternalServerError, err
 	}
 	defer resp.Body.Close()
 
 	text, err := readBoundedBody(resp.Body, maximumModPortalDetailsBodyBytes)
 	if err != nil {
-		return mod, err, http.StatusInternalServerError
+		return mod, http.StatusInternalServerError, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return ModPortalStruct{}, errors.New(string(text)), resp.StatusCode
+		return ModPortalStruct{}, resp.StatusCode, errors.New(string(text))
 	}
 	err = json.Unmarshal(text, &mod)
 	if err != nil {
-		return mod, err, http.StatusInternalServerError
+		return mod, http.StatusInternalServerError, err
 	}
 	if len(mod.Releases) > maximumModPortalReleases {
-		return ModPortalStruct{}, fmt.Errorf("mod portal response contains more than %d releases", maximumModPortalReleases), http.StatusBadGateway
+		return ModPortalStruct{}, http.StatusBadGateway, fmt.Errorf("mod portal response contains more than %d releases", maximumModPortalReleases)
 	}
 	for _, release := range mod.Releases {
 		if len(release.InfoJSON.Dependencies) > maximumModPortalDependencies {
-			return ModPortalStruct{}, fmt.Errorf("mod portal release contains more than %d dependencies", maximumModPortalDependencies), http.StatusBadGateway
+			return ModPortalStruct{}, http.StatusBadGateway, fmt.Errorf("mod portal release contains more than %d dependencies", maximumModPortalDependencies)
 		}
 	}
 
@@ -157,48 +157,45 @@ func ModPortalModDetails(modId string) (ModPortalStruct, error, int) {
 	if installedBaseVersion.Equals(NilVersion) {
 		installedBaseVersion = snapshot.Version
 	}
-	requiredVersion := NilVersion
-
 	for key, release := range mod.Releases {
-		requiredVersion = release.InfoJSON.FactorioVersion
-		release.Compatibility = installedBaseVersion.SameFactorioLine(requiredVersion)
+		release.Compatibility = installedBaseVersion.SameFactorioLine(release.InfoJSON.FactorioVersion)
 		mod.Releases[key] = release
 	}
 
-	return mod, nil, resp.StatusCode
+	return mod, resp.StatusCode, nil
 }
 
 // Log the user into factorio, so mods can be downloaded
-func FactorioLogin(username string, password string) (error, int) {
+func FactorioLogin(username string, password string) (int, error) {
 	var err error
 
 	resp, err := modPortalHTTPClient.PostForm("https://auth.factorio.com/api-login",
 		url.Values{"require_game_ownership": {"true"}, "username": {username}, "password": {password}})
 
 	if err != nil {
-		return err, http.StatusInternalServerError
+		return http.StatusInternalServerError, err
 	}
 
 	defer resp.Body.Close()
 
 	bodyBytes, err := readBoundedBody(resp.Body, maximumModPortalAuthBodyBytes)
 	if err != nil {
-		return err, http.StatusInternalServerError
+		return http.StatusInternalServerError, err
 	}
 
 	bodyString := string(bodyBytes)
 
 	if resp.StatusCode != http.StatusOK {
-		return errors.New(bodyString), resp.StatusCode
+		return resp.StatusCode, errors.New(bodyString)
 	}
 
 	var successResponse []string
 	err = json.Unmarshal(bodyBytes, &successResponse)
 	if err != nil {
-		return err, http.StatusInternalServerError
+		return http.StatusInternalServerError, err
 	}
 	if len(successResponse) != 1 || successResponse[0] == "" {
-		return errors.New("Factorio authentication returned an invalid credential response"), http.StatusBadGateway
+		return http.StatusBadGateway, errors.New("the Factorio authentication service returned an invalid credential response")
 	}
 
 	credentials := Credentials{
@@ -208,8 +205,8 @@ func FactorioLogin(username string, password string) (error, int) {
 
 	err = credentials.Save()
 	if err != nil {
-		return err, http.StatusInternalServerError
+		return http.StatusInternalServerError, err
 	}
 
-	return nil, http.StatusOK
+	return http.StatusOK, nil
 }

@@ -2,6 +2,7 @@ package lockfile
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -29,25 +30,29 @@ func NewLock() *FileLock {
 	return lock
 }
 
-func makeAbsolutePath(target string) string {
+var resolveAbsolutePath = makeAbsolutePath
+
+func makeAbsolutePath(target string) (string, error) {
 	if filepath.IsAbs(target) {
-		return filepath.Clean(target)
+		return filepath.Clean(target), nil
 	}
 
 	wd, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("error get working directory: %s", err)
-		return ""
+		return "", fmt.Errorf("get working directory for relative file lock path: %w", err)
 	}
 
-	return filepath.Join(wd, target)
+	return filepath.Join(wd, target), nil
 }
 
 func (fl *FileLock) Lock(filePath string) error {
+	filePath, err := resolveAbsolutePath(filePath)
+	if err != nil {
+		return err
+	}
+
 	fl.m.Lock()
 	defer fl.m.Unlock()
-
-	filePath = makeAbsolutePath(filePath)
 
 	if fl.Locks[filePath].Read == 0 && fl.Locks[filePath].Write == 0 {
 		lock := fl.Locks[filePath]
@@ -60,10 +65,13 @@ func (fl *FileLock) Lock(filePath string) error {
 }
 
 func (fl *FileLock) Unlock(filePath string) error {
+	filePath, err := resolveAbsolutePath(filePath)
+	if err != nil {
+		return err
+	}
+
 	fl.m.Lock()
 	defer fl.m.Unlock()
-
-	filePath = makeAbsolutePath(filePath)
 
 	lock := fl.Locks[filePath]
 	if lock.Read == 0 && lock.Write == 1 {
@@ -75,10 +83,13 @@ func (fl *FileLock) Unlock(filePath string) error {
 }
 
 func (fl *FileLock) RLock(filePath string) error {
+	filePath, err := resolveAbsolutePath(filePath)
+	if err != nil {
+		return err
+	}
+
 	fl.m.Lock()
 	defer fl.m.Unlock()
-
-	filePath = makeAbsolutePath(filePath)
 
 	lock := fl.Locks[filePath]
 	if lock.Write == 0 {
@@ -91,10 +102,13 @@ func (fl *FileLock) RLock(filePath string) error {
 }
 
 func (fl *FileLock) RUnlock(filePath string) error {
+	filePath, err := resolveAbsolutePath(filePath)
+	if err != nil {
+		return err
+	}
+
 	fl.m.Lock()
 	defer fl.m.Unlock()
-
-	filePath = makeAbsolutePath(filePath)
 
 	lock := fl.Locks[filePath]
 	if lock.Read > 0 && lock.Write == 0 {
@@ -110,33 +124,32 @@ func (fl *FileLock) RUnlock(filePath string) error {
 	return nil
 }
 
-func (fl *FileLock) LockW(filePath string) {
+func (fl *FileLock) LockW(filePath string) error {
 	for {
 		err := fl.Lock(filePath)
-		if err == ErrorAlreadyLocked {
+		if errors.Is(err, ErrorAlreadyLocked) {
 			time.Sleep(time.Second * 2)
 			log.Println("file locked wait two seconds to access write-lock")
+			continue
 		}
-
-		if err == nil {
-			break
+		if err != nil {
+			return err
 		}
+		return nil
 	}
-	return
 }
 
-func (fl *FileLock) RLockW(filePath string) {
+func (fl *FileLock) RLockW(filePath string) error {
 	for {
 		err := fl.RLock(filePath)
-
-		if err == ErrorAlreadyLocked {
+		if errors.Is(err, ErrorAlreadyLocked) {
 			time.Sleep(time.Second * 2)
 			log.Println("file locked ... wait two seconds to try to access read-lock")
+			continue
 		}
-
-		if err == nil {
-			break
+		if err != nil {
+			return err
 		}
+		return nil
 	}
-	return
 }
