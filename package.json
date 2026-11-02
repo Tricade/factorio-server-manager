@@ -49,20 +49,20 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-test-renderer": "18.3.1",
-    "react-router": "7.18.4",
-    "react-router-dom": "7.18.4",
+    "react-router": "7.18.5",
+    "react-router-dom": "7.18.5",
     "tailwindcss": "^4.3.3",
     "terser-webpack-plugin": "^5.6.1",
-    "webpack": "^5.112.1",
+    "webpack": "^5.112.2",
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
-    "axios": "^1.20.0",
+    "axios": "^1.21.0",
     "events": "^3.3.0",
     "fuse.js": "^7.5.0",
-    "react-hook-form": "^7.90.0",
+    "react-hook-form": "^7.91.0",
     "regenerator-runtime": "^0.14.1",
     "semver": "^7.8.5"
   }
