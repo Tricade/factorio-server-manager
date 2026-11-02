@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Security
+- Update the transitive `follow-redirects` dependency to 1.16.2 for cross-realm sensitive-header handling (GHSA-mrwp-f3q8-3g9p / CVE-2026-116689). Add loopback-only regression tests for object and array headers, retaining credentials on same-origin redirects and stripping them across origins. The affected Node redirect implementation is not used by the browser UI or Go runtime.
+
+### Changed
+- Update Axios to 1.21.0, React Hook Form to 7.91.0, React Router and React Router DOM to 7.18.5, and Webpack to 5.112.2. Existing authentication, uploads, routes and saved configuration remain unchanged.
+- Refresh the pinned official Node 24 frontend-builder and Ubuntu 24.04 runtime image digests. Keep the current Go toolchain, image names, ports, environment settings and persistence layouts.
+
 ## [0.21.0] - 2026-10-28
 
 ### Fixed
