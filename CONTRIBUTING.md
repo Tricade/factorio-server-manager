@@ -113,6 +113,10 @@ An interrupted run can leave test data if the manager is unreachable; inspect th
 
 ## Dependency and security review
 
+The [CodeQL workflow](.github/workflows/codeql.yml) scans Actions, Go, JavaScript/TypeScript and Python on all pull requests against `main`, including Dependabot and dependency-only changes. It also runs on pushes to `main` and weekly. Keep GitHub's CodeQL default setup disabled when using this workflow; the default setup blocks uploads from an advanced configuration.
+
+To scan an already-open same-repository Dependabot PR without touching its branch, run `gh workflow run codeql.yml --ref main -f pull_request=102` (replace the number). The workflow checks out the current PR head and uploads the results to that exact commit. Confirm all four analysis results are present on the pull request; a neutral CodeQL check is not evidence of a completed scan.
+
 Use `npm audit` and the reachability-aware Go scanner in addition to tests. Inspect the advisory and the code path before deciding whether an alert affects build tools, shipped browser code or server runtime. A clean `npm audit --omit=dev` alone does not prove that a frontend is safe: the browser bundle also uses packages classified as development dependencies.
 
 Do not use `npm audit fix --force` to change the framework as an incidental security fix. Keep immutable container/action pins and exact Go toolchain alignment. The Tailwind 4 migration and removal of the unpatched Tailwind 3 build chain are documented in [Technical notes](TECHNICAL-NOTES.md#frontend-dependency-compatibility).

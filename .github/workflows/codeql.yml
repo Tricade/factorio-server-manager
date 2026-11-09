@@ -1,0 +1,99 @@
+name: CodeQL analysis
+run-name: "${{ inputs.pull_request && format('CodeQL replay for PR #{0}', inputs.pull_request) || format('CodeQL for {0}', github.ref_name) }}"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '37 4 * * 2'
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: 'Optional open Dependabot PR number to rescan without updating its branch'
+        type: string
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || inputs.pull_request || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: go
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+    steps:
+      - name: Resolve an existing Dependabot PR for replay
+        if: github.event_name == 'workflow_dispatch' && inputs.pull_request != ''
+        id: replay
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull_request }}
+        run: |
+          if [[ ! $PR_NUMBER =~ ^[1-9][0-9]{0,8}$ ]]; then
+            echo 'Expected a positive pull request number.' >&2
+            exit 1
+          fi
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '
+            if .state == "open" and .base.ref == "main"
+              and .user.login == "dependabot[bot]"
+              and .head.repo.full_name == .base.repo.full_name
+              and (.head.ref | startswith("dependabot/"))
+            then .head.sha else error("Expected an open, same-repository Dependabot PR against main") end
+          ')
+          if [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'The pull request head is not a commit SHA.' >&2
+            exit 1
+          fi
+          printf 'ref=refs/pull/%s/head\nsha=%s\n' "$PR_NUMBER" "$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.replay.outputs.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        if: matrix.language == 'go'
+        with:
+          go-version-file: src/go.mod
+          cache: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Compile Go packages for CodeQL
+        if: matrix.language == 'go'
+        working-directory: src
+        env:
+          CGO_ENABLED: '0'
+          GOTOOLCHAIN: local
+        run: go build -mod=readonly ./...
+      - name: Analyze and upload CodeQL results
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}
+          upload: always
+          ref: ${{ steps.replay.outputs.ref }}
+          sha: ${{ steps.replay.outputs.sha }}
