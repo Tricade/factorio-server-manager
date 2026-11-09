@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Security
+- Scan Dependabot and other dependency-only pull requests with the same CodeQL language coverage as the default branch.
 - Update the transitive `follow-redirects` dependency to 1.16.2 for cross-realm sensitive-header handling (GHSA-mrwp-f3q8-3g9p / CVE-2026-116689). Add loopback-only regression tests for object and array headers, retaining credentials on same-origin redirects and stripping them across origins. The affected Node redirect implementation is not used by the browser UI or Go runtime.
 
 ### Changed
