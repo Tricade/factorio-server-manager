@@ -181,8 +181,17 @@ func TestCheckpointMonitorUsesConfirmedPlayerTransition(t *testing.T) {
 
 	server := GetFactorioServer()
 	server.SetRunning(true)
-	startCheckpointMonitor(server)
-	t.Cleanup(func() { server.SetRunning(false) })
+	ctx := t.Context()
+	monitorDone := make(chan struct{})
+	go func() {
+		defer close(monitorDone)
+		checkpointMonitorLoop(ctx, server)
+	}()
+	t.Cleanup(func() {
+		// The test context is already canceled. Wait before restoring the profile hooks.
+		<-monitorDone
+		server.SetRunning(false)
+	})
 
 	require.Eventually(t, func() bool {
 		state, stateErr := GetCheckpointState()
