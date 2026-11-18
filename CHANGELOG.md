@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Security
 - Rebuild the Go backend with 1.26.11 to fix the HTTP/1 body-limit race in `net/http` ([GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859), CVE-2026-97054). Align both container builders, CI and release builds with the same patched toolchain.
 - Refresh the build-only Node.js image to [24.22.3](https://nodejs.org/en/blog/release/v24.22.3/) for the upstream HTTP/2 and TLS security fixes. The production manager does not run Node.js.
+- Remove vulnerable build-only `picomatch` ([CVE-2026-112366](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)); keep the same cssnano optimization without the separate CSS plugin and disable worker serialization for minification.
 - Update the transitive `follow-redirects` dependency to 1.16.2 for cross-realm sensitive-header handling (GHSA-mrwp-f3q8-3g9p / CVE-2026-116689). Add loopback-only regression tests for object and array headers, retaining credentials on same-origin redirects and stripping them across origins. The affected Node redirect implementation is not used by the browser UI or Go runtime.
 
 ### Changed

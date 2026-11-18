@@ -22,6 +22,7 @@
 
 - Go 1.26.11 corrects the [HTTP/1 request-body-limit race](https://pkg.go.dev/vuln/GO-2026-6859) (GO-2026-6859 / CVE-2026-97054) flagged in the older Go toolchain.
 - The [Node 24.22.3 security update](https://nodejs.org/en/blog/release/v24.22.3/) includes upstream HTTP/2 and TLS fixes and applies only to the build environment.
+- Remove the build-only dependency on vulnerable [picomatch](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) (CVE-2026-112366). The production UI still uses cssnano for CSS and Terser for JavaScript; both now minify without worker serialization.
 - The Node HTTP adapter uses [`follow-redirects` 1.16.2](https://github.com/advisories/GHSA-mrwp-f3q8-3g9p) (CVE-2026-116689); Axios 1.21.1 also requires the fixed minimum. The browser UI and the Go server do not use the Node HTTP adapter.
 - No new outbound services, telemetry or AI runtime are introduced.
 

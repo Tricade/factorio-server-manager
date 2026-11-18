@@ -26,6 +26,7 @@
 ### 0.21.1 (2026-11-18)
 - Fix the Go HTTP/1 request-body-limit race (CVE-2026-97054) by rebuilding with Go 1.26.11.
 - Keep the Node security update in the build stage; refresh frontend and backend dependencies.
+- Remove the vulnerable picomatch build dependency while keeping CSS minification.
 - No migration or layout changes. Existing saves, mods, profiles and Factorio versions are preserved.
 
 ### 0.21.0 (2026-10-28)

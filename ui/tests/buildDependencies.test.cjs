@@ -25,28 +25,25 @@ test("build URI parsing does not turn encoded schemes into trusted schemes", () 
     assert.equal(uri.normalize("HTTPS://EXAMPLE.INVALID:443/"), "https://example.invalid/");
 });
 
-test("build serialization neutralizes a script end tag at the end of a function", () => {
-    const serialize = createRequire(require.resolve("css-minimizer-webpack-plugin"))("serialize-javascript");
-    // GHSA-m5mm-p8h7-m29v: synthetic source is serialized but never executed.
-    for (const suffix of ["//</script", "</ScRiPt"]) {
-        const synthetic = function () {};
-        synthetic.toString = () => `function synthetic() { return 1 }${suffix}`;
-        const output = serialize({nested: {synthetic}}, {space: 2});
-        assert.doesNotMatch(output, /<\/script(?=[\t\n\f\r />]|$)/i);
-    }
-    assert.equal(serialize({value: "plain text"}), '{"value":"plain text"}');
-});
-
 test("all URI and serialization build dependencies include the security patches", () => {
     const lock = require("../../package-lock.json");
     const semver = require("semver");
     for (const [name, minimum] of [["fast-uri", "3.1.9"], ["serialize-javascript", "7.1.3"]]) {
         const copies = Object.entries(lock.packages).filter(([path]) => path.endsWith(`node_modules/${name}`));
-        assert.ok(copies.length > 0, name);
+        if (name === "fast-uri") assert.ok(copies.length > 0, name);
         for (const [path, metadata] of copies) {
             assert.ok(semver.gte(metadata.version, minimum), `${path}: ${metadata.version}`);
         }
     }
+});
+
+test("the build dependency tree excludes picomatch versions affected by GHSA-fc5q-39xc-vjpf", () => {
+    const lock = require("../../package-lock.json");
+    const semver = require("semver");
+    const vulnerable = Object.entries(lock.packages)
+        .filter(([path, metadata]) => path.endsWith("node_modules/picomatch") && semver.lte(metadata.version, "4.0.7"))
+        .map(([path, metadata]) => `${path}@${metadata.version}`);
+    assert.deepEqual(vulnerable, []);
 });
 
 test("all selector-parser build dependencies include the CPU-exhaustion fix", () => {
