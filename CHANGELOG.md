@@ -5,13 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-11-18
+
 ### Security
-- Scan Dependabot and other dependency-only pull requests with the same CodeQL language coverage as the default branch.
+- Rebuild the Go backend with 1.26.11 to fix the HTTP/1 body-limit race in `net/http` ([GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859), CVE-2026-97054). Align both container builders, CI and release builds with the same patched toolchain.
+- Refresh the build-only Node.js image to [24.22.3](https://nodejs.org/en/blog/release/v24.22.3/) for the upstream HTTP/2 and TLS security fixes. The production manager does not run Node.js.
+- Remove vulnerable build-only `picomatch` ([CVE-2026-112366](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)); keep the same cssnano optimization without the separate CSS plugin and disable worker serialization for minification.
 - Update the transitive `follow-redirects` dependency to 1.16.2 for cross-realm sensitive-header handling (GHSA-mrwp-f3q8-3g9p / CVE-2026-116689). Add loopback-only regression tests for object and array headers, retaining credentials on same-origin redirects and stripping them across origins. The affected Node redirect implementation is not used by the browser UI or Go runtime.
 
 ### Changed
-- Update Axios to 1.21.0, React Hook Form to 7.91.0, React Router and React Router DOM to 7.18.5, and Webpack to 5.112.2. Existing authentication, uploads, routes and saved configuration remain unchanged.
-- Refresh the pinned official Node 24 frontend-builder and Ubuntu 24.04 runtime image digests. Keep the current Go toolchain, image names, ports, environment settings and persistence layouts.
+- Update Axios to 1.21.1, React Hook Form to 7.92.0, React Router and React Router DOM to 7.18.5, Webpack to 5.112.2, Babel's preset to 7.29.14, Tailwind/PostCSS integration to 4.3.5, SemVer to 7.8.6 and Playwright to 1.65.0.
+- Update Go modules including `golang.org/x/crypto` 0.59.0, `golang.org/x/sys` 0.50.0 and `gopkg.in/ini.v1` 1.68.0, plus the related indirect modules.
+- Refresh the pinned Ubuntu 24.04 runtime image. Scan dependency-only PRs with CodeQL across Actions, Go, JavaScript/TypeScript and Python, and update the registry login action to 4.8.0.
+- Keep the UI, game-version selection, profiles, API and persistence layouts unchanged; no migration is required.
 
 ## [0.21.0] - 2026-10-28
 

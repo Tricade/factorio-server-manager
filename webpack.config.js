@@ -2,7 +2,6 @@ const path = require('path');
 const fs = require('fs');
 const webpack = require('webpack');
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
-const CssMinimizerPlugin = require("css-minimizer-webpack-plugin");
 const TerserPlugin = require('terser-webpack-plugin');
 const packageMetadata = require('./package.json');
 
@@ -45,6 +44,9 @@ module.exports = (env, argv) => {
     const uiRevision = process.env.FSM_UI_REVISION || "local";
     const revisionSuffix = ["", "unknown", "local"].includes(uiRevision) ? "" : `-${uiRevision.slice(0, 12)}`;
     const assetVersion = `${uiVersion}${revisionSuffix}`;
+
+    // Minify in-process so the build does not use the bundled worker serializer.
+    const minifierOptions = {parallel: false};
 
     return {
         entry: {
@@ -170,8 +172,13 @@ module.exports = (env, argv) => {
         optimization: {
             minimize: isProduction,
             minimizer: [
-                new CssMinimizerPlugin(),
-                new TerserPlugin()
+                new TerserPlugin({
+                    ...minifierOptions,
+                    test: /\.css(\?.*)?$/i,
+                    minify: TerserPlugin.cssnanoMinify,
+                    extractComments: false
+                }),
+                new TerserPlugin(minifierOptions)
             ],
         }
     }

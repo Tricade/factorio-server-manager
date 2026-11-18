@@ -5,7 +5,7 @@ This guide is for local source changes to Factorio Server Control. It describes 
 ## Prerequisites and supported boundaries
 
 - Node.js 24 and npm, using the checked-in `package-lock.json` (`npm ci`).
-- Go 1.26.10, the exact version declared by `src/go.mod`. When needed, set `GOTOOLCHAIN=go1.26.10` (PowerShell: `$env:GOTOOLCHAIN='go1.26.10'`).
+- Go 1.26.11, the exact version declared by `src/go.mod`. When needed, set `GOTOOLCHAIN=go1.26.11` (PowerShell: `$env:GOTOOLCHAIN='go1.26.11'`).
 - Python 3 for repository validators and the disposable container harness.
 - Git. Docker is optional for native development and required only for the disposable image/integration workflows.
 - A separate, locally installed Factorio binary capable of running a server for live engine testing. Linux has the official headless download; native Windows development uses a separate installation of the Windows Factorio executable, not the Linux headless archive. The manager does not download or bundle the game as part of a native build. The shipped production image is built for Linux/amd64; the real-engine CI scenarios pin Factorio 2.0.77 and 2.1.20. Do not infer that every Factorio version, mod or host architecture has been integration-tested from those representative cases.
@@ -47,7 +47,7 @@ Run commands from a disposable clone/worktree. Keep the repository root as the m
 
    ```powershell
    Push-Location src
-   $env:GOTOOLCHAIN = 'go1.26.10'
+   $env:GOTOOLCHAIN = 'go1.26.11'
    go build -o ../build/dev-runtime/manager/factorio-server-manager.exe .
    Pop-Location
    ```
@@ -104,7 +104,7 @@ Secret rules for development and code review:
 
 For UI changes, run `npm run watch` in one terminal and the Go binary in another. The UI is built into `app/` and served by the Go process; this project does not need a separate frontend dev server. Start the backend from the repo root so its static-file root is correct. Reload the browser after Webpack has emitted the changed bundle. Use browser devtools Network/Console to inspect synthetic requests, failed chunks and WebSocket lifecycle; do not capture real credentials or private game data in diagnostics.
 
-For backend changes, use focused tests from `src/`, for example `GOTOOLCHAIN=go1.26.10 go test ./api -short -run 'TestProfile|TestAuth' -count=1` (PowerShell uses `$env:GOTOOLCHAIN='go1.26.10'`). Run package tests after a focused test, then vet where relevant. For lock, startup/shutdown or WebSocket changes, use the race checks in [CONTRIBUTING.md](../CONTRIBUTING.md#toolchain-and-local-checks). Tests use injected functions and temporary roots; prefer those seams to a real engine or service.
+For backend changes, use focused tests from `src/`, for example `GOTOOLCHAIN=go1.26.11 go test ./api -short -run 'TestProfile|TestAuth' -count=1` (PowerShell uses `$env:GOTOOLCHAIN='go1.26.11'`). Run package tests after a focused test, then vet where relevant. For lock, startup/shutdown or WebSocket changes, use the race checks in [CONTRIBUTING.md](../CONTRIBUTING.md#toolchain-and-local-checks). Tests use injected functions and temporary roots; prefer those seams to a real engine or service.
 
 The backend logs to standard Go logging output; inspect that terminal for local failures. Factorio child-process output is consumed by the manager and may include mod-authored text, so do not paste raw logs into public issue reports without checking them for credentials, player names and private paths. There is no supported debug HTTP endpoint that exposes internal state.
 

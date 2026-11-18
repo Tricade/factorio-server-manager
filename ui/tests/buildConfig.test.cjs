@@ -1,15 +1,27 @@
 const {test} = require("node:test");
 const assert = require("node:assert/strict");
 const configure = require("../../webpack.config.js");
-const CssMinimizerPlugin = require("css-minimizer-webpack-plugin");
 const TerserPlugin = require("terser-webpack-plugin");
 
 test("production minifies both stylesheet and JavaScript assets", () => {
     const config = configure({}, {mode: "production"});
     assert.equal(config.optimization.minimize, true);
-    assert.ok(config.optimization.minimizer.some(plugin => plugin instanceof CssMinimizerPlugin));
-    assert.ok(config.optimization.minimizer.some(plugin => plugin instanceof TerserPlugin));
+    const [css, js] = config.optimization.minimizer;
+    assert.ok(css instanceof TerserPlugin);
+    assert.equal(css.options.minimizer.implementation, TerserPlugin.cssnanoMinify);
+    assert.ok(css.options.test.test("style.css"));
+    assert.ok(!css.options.test.test("bundle.js"));
+    assert.ok(js instanceof TerserPlugin);
+    assert.equal(js.options.minimizer.implementation, TerserPlugin.terserMinify);
+    assert.ok(js.options.test.test("bundle.js"));
     assert.equal(config.devtool, false);
+});
+
+test("production does not serialize minifier options for worker processes", () => {
+    const config = configure({}, {mode: "production"});
+    for (const plugin of config.optimization.minimizer) {
+        assert.equal(plugin.options.parallel, false);
+    }
 });
 
 test("development retains source maps without minification", () => {
